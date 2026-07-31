@@ -1,0 +1,319 @@
+local Players = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+
+local player = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
+
+-- ลบ UI เก่าถ้ามีอยู่ก่อนแล้ว
+if playerGui:FindFirstChild("DARKKING_UI") then
+	playerGui.DARKKING_UI:Destroy()
+end
+
+local gui = Instance.new("ScreenGui")
+gui.Name = "DARKKING_UI"
+gui.ResetOnSpawn = false
+gui.Parent = playerGui
+
+-- [[ ฟังก์ชันสำหรับสร้างเอฟเฟกต์ไฟ RGB ]]
+local function ApplyRGBEffect(object, speed)
+	speed = speed or 1
+	local connection
+	connection = RunService.RenderStepped:Connect(function()
+		if not object or not object.Parent then
+			connection:Disconnect()
+			return
+		end
+		
+		local hue = (tick() * speed) % 1
+		local color = Color3.fromHSV(hue, 0.8, 1)
+
+		if object:IsA("GuiObject") then
+			if object:IsA("TextLabel") or object:IsA("TextButton") then
+				object.TextColor3 = color
+			end
+			object.BorderColor3 = color
+		elseif object:IsA("UIStroke") then
+			object.Color = color
+		end
+	end)
+end
+
+-- [[ สร้างหน้าหลัก ( Main UI Responsive ) ]]
+local Main = Instance.new("Frame")
+Main.Name = "MainFrame"
+Main.Parent = gui
+-- ใช้ Scale เพื่อให้ปรับขนาดตามความกว้าง/สูงของหน้าจอ (55% ของความกว้าง, 55% ของความสูง)
+Main.Size = UDim2.new(0.55, 0, 0.55, 0)
+Main.Position = UDim2.new(0.5, 0, 0.5, 0)
+Main.AnchorPoint = Vector2.new(0.5, 0.5) -- จุดอ้างอิงตรงกลาง เพื่อให้อยู่กึ่งกลางเสมอ
+Main.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+Main.BorderSizePixel = 0
+Main.Active = true
+Main.Draggable = true
+
+-- คุมขนาดไม่ให้ใหญ่หรือเล็กเกินไปในจอแต่ละประเภท (PC / Mobile)
+local MainSizeConstraint = Instance.new("UISizeConstraint", Main)
+MainSizeConstraint.MinSize = Vector2.new(380, 260) -- ขนาดต่ำสุดบนมือถือจอเล็ก
+MainSizeConstraint.MaxSize = Vector2.new(650, 400) -- ขนาดสูงสุดบนจอคอมพิวเตอร์ใหญ่
+
+-- รักษาสัดส่วนของ UI ไม่ให้โย้หรือเบี้ยว
+local MainAspect = Instance.new("UIAspectRatioConstraint", Main)
+MainAspect.AspectRatio = 1.625 -- สัดส่วน 650:400
+
+local MainCorner = Instance.new("UICorner", Main)
+MainCorner.CornerRadius = UDim.new(0.04, 0)
+
+local MainStroke = Instance.new("UIStroke", Main)
+MainStroke.Thickness = 3
+MainStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+ApplyRGBEffect(MainStroke, 0.8)
+
+-- [[ ปุ่มเปิด/ปิด เมนูหลัก ]]
+local OpenButton = Instance.new("TextButton")
+OpenButton.Name = "OpenButton"
+OpenButton.Parent = gui
+OpenButton.Size = UDim2.new(0.08, 0, 0.08, 0)
+OpenButton.Position = UDim2.new(0.03, 0, 0.5, 0)
+OpenButton.AnchorPoint = Vector2.new(0, 0.5)
+OpenButton.Text = "☰"
+OpenButton.TextScaled = true -- ขยายตัวอักษรอัตโนมัติ
+OpenButton.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+OpenButton.TextColor3 = Color3.new(1, 1, 1)
+OpenButton.Visible = true
+OpenButton.Active = true
+OpenButton.Draggable = true
+OpenButton.BorderSizePixel = 0
+
+local OpenAspect = Instance.new("UIAspectRatioConstraint", OpenButton)
+OpenAspect.AspectRatio = 1 -- คงความเป็นทรงกลม/จัตุรัสเสมอ
+
+local OpenSizeConstraint = Instance.new("UISizeConstraint", OpenButton)
+OpenSizeConstraint.MinSize = Vector2.new(45, 45)
+OpenSizeConstraint.MaxSize = Vector2.new(65, 65)
+
+local OpenCorner = Instance.new("UICorner", OpenButton)
+OpenCorner.CornerRadius = UDim.new(1, 0)
+
+local OpenStroke = Instance.new("UIStroke", OpenButton)
+OpenStroke.Thickness = 3
+OpenStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+ApplyRGBEffect(OpenStroke, 1.5)
+
+-- [[ แถบบน ( Title Bar ) ]]
+local Top = Instance.new("Frame")
+Top.Name = "TitleBar"
+Top.Parent = Main
+Top.Size = UDim2.new(1, 0, 0.125, 0)
+Top.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+Top.BorderSizePixel = 0
+
+local TopCorner = Instance.new("UICorner", Top)
+TopCorner.CornerRadius = UDim.new(0.3, 0)
+
+local TopMask = Instance.new("Frame", Top)
+TopMask.Size = UDim2.new(1, 0, 0.5, 0)
+TopMask.Position = UDim2.new(0, 0, 0.5, 0)
+TopMask.BackgroundColor3 = Top.BackgroundColor3
+TopMask.BorderSizePixel = 0
+
+local Title = Instance.new("TextLabel")
+Title.Name = "HubTitle"
+Title.Parent = Top
+Title.Size = UDim2.new(0.6, 0, 0.8, 0)
+Title.Position = UDim2.new(0.03, 0, 0.1, 0)
+Title.BackgroundTransparency = 1
+Title.Text = "DARKKING HUB"
+Title.TextColor3 = Color3.new(1, 1, 1)
+Title.Font = Enum.Font.GothamBold
+Title.TextScaled = true
+Title.TextXAlignment = Enum.TextXAlignment.Left
+
+ApplyRGBEffect(Title, 0.8)
+
+-- ปุ่มย่อหน้าต่าง
+local Min = Instance.new("TextButton")
+Min.Name = "MinimizeButton"
+Min.Parent = Top
+Min.Size = UDim2.new(0.08, 0, 0.6, 0)
+Min.Position = UDim2.new(0.85, 0, 0.2, 0)
+Min.Text = "-"
+Min.Font = Enum.Font.GothamBold
+Min.TextScaled = true
+Min.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+Min.TextColor3 = Color3.new(1, 1, 1)
+Min.BorderSizePixel = 0
+Instance.new("UICorner", Min).CornerRadius = UDim.new(0.2, 0)
+
+-- ปุ่มปิด
+local Close = Instance.new("TextButton")
+Close.Name = "CloseButton"
+Close.Parent = Top
+Close.Size = UDim2.new(0.08, 0, 0.6, 0)
+Close.Position = UDim2.new(0.93, 0, 0.2, 0)
+Close.Text = "X"
+Close.Font = Enum.Font.GothamBold
+Close.TextScaled = true
+Close.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
+Close.TextColor3 = Color3.new(1, 1, 1)
+Close.BorderSizePixel = 0
+Instance.new("UICorner", Close).CornerRadius = UDim.new(0.2, 0)
+
+-- [[ เมนูด้านซ้าย ( Sidebar ) ]]
+local Side = Instance.new("Frame")
+Side.Name = "Sidebar"
+Side.Parent = Main
+Side.Position = UDim2.new(0, 0, 0.125, 0)
+Side.Size = UDim2.new(0.3, 0, 0.875, 0)
+Side.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+Side.BorderSizePixel = 0
+
+local SideCorner = Instance.new("UICorner", Side)
+SideCorner.CornerRadius = UDim.new(0.05, 0)
+
+local Layout = Instance.new("UIListLayout", Side)
+Layout.Padding = UDim.new(0.03, 0)
+Layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+Layout.VerticalAlignment = Enum.VerticalAlignment.Top
+
+local SidePadding = Instance.new("UIPadding", Side)
+SidePadding.PaddingTop = UDim.new(0.05, 0)
+
+local function CreateTab(name)
+	local b = Instance.new("TextButton")
+	b.Size = UDim2.new(0.9, 0, 0.18, 0)
+	b.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+	b.Text = name
+	b.TextColor3 = Color3.new(0.8, 0.8, 0.8)
+	b.Font = Enum.Font.GothamSemibold
+	b.TextScaled = true
+	b.BorderSizePixel = 0
+	b.AutoButtonColor = false
+	Instance.new("UICorner", b).CornerRadius = UDim.new(0.2, 0)
+	b.Parent = Side
+
+	local bStroke = Instance.new("UIStroke", b)
+	bStroke.Thickness = 2
+	bStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	bStroke.Transparency = 1
+
+	b.MouseEnter:Connect(function()
+		TweenService:Create(b, TweenInfo.new(0.2), {
+			BackgroundColor3 = Color3.fromRGB(50, 50, 50),
+			TextColor3 = Color3.new(1, 1, 1)
+		}):Play()
+		TweenService:Create(bStroke, TweenInfo.new(0.2), {
+			Transparency = 0
+		}):Play()
+		ApplyRGBEffect(bStroke, 1)
+	end)
+
+	b.MouseLeave:Connect(function()
+		TweenService:Create(b, TweenInfo.new(0.2), {
+			BackgroundColor3 = Color3.fromRGB(30, 30, 30),
+			TextColor3 = Color3.new(0.8, 0.8, 0.8)
+		}):Play()
+		TweenService:Create(bStroke, TweenInfo.new(0.2), {
+			Transparency = 1
+		}):Play()
+	end)
+
+	return b
+end
+
+local Home = CreateTab("🏠 Home")
+local MainTab = CreateTab("⭐ เมนูหลัก")
+local Settings = CreateTab("⚙ ตั้งค่า")
+local Credits = CreateTab("📜 Credits")
+
+-- [[ พื้นที่แสดงผลเนื้อหา ( Content Area ) ]]
+local Content = Instance.new("Frame")
+Content.Name = "ContentArea"
+Content.Parent = Main
+Content.Position = UDim2.new(0.3, 0, 0.125, 0)
+Content.Size = UDim2.new(0.7, 0, 0.875, 0)
+Content.BackgroundTransparency = 1
+
+local Label = Instance.new("TextLabel")
+Label.Name = "ContentTitle"
+Label.Parent = Content
+Label.Size = UDim2.new(0.9, 0, 0.15, 0)
+Label.Position = UDim2.new(0.05, 0, 0.05, 0)
+Label.BackgroundTransparency = 1
+Label.Text = "Welcome to DARKKING HUB!"
+Label.TextColor3 = Color3.new(1, 1, 1)
+Label.Font = Enum.Font.GothamBold
+Label.TextScaled = true
+Label.TextXAlignment = Enum.TextXAlignment.Center
+
+-- ปุ่มสุ่ม Diamond Block
+local SpawnBlockBtn = Instance.new("TextButton")
+SpawnBlockBtn.Name = "SpawnDiamondBlockBtn"
+SpawnBlockBtn.Parent = Content
+SpawnBlockBtn.Position = UDim2.new(0.5, 0, 0.35, 0)
+SpawnBlockBtn.AnchorPoint = Vector2.new(0.5, 0)
+SpawnBlockBtn.Size = UDim2.new(0.55, 0, 0.18, 0)
+SpawnBlockBtn.BackgroundColor3 = Color3.fromRGB(0, 140, 220)
+SpawnBlockBtn.Text = "💎 สุ่ม Diamond Block"
+SpawnBlockBtn.TextColor3 = Color3.new(1, 1, 1)
+SpawnBlockBtn.Font = Enum.Font.GothamBold
+SpawnBlockBtn.TextScaled = true
+SpawnBlockBtn.Visible = false
+SpawnBlockBtn.BorderSizePixel = 0
+
+Instance.new("UICorner", SpawnBlockBtn).CornerRadius = UDim.new(0.2, 0)
+
+local BtnStroke = Instance.new("UIStroke", SpawnBlockBtn)
+BtnStroke.Thickness = 3
+BtnStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+ApplyRGBEffect(BtnStroke, 1.2)
+
+-- [[ ระบบการทำงาน Event ต่างๆ ]]
+local function ResetContent()
+	SpawnBlockBtn.Visible = false
+end
+
+Home.MouseButton1Click:Connect(function()
+	Label.Text = "Home"
+	ResetContent()
+end)
+
+MainTab.MouseButton1Click:Connect(function()
+	Label.Text = "Main Menu"
+	ResetContent()
+	SpawnBlockBtn.Visible = true
+end)
+
+Settings.MouseButton1Click:Connect(function()
+	Label.Text = "Settings"
+	ResetContent()
+end)
+
+Credits.MouseButton1Click:Connect(function()
+	Label.Text = "Credits"
+	ResetContent()
+end)
+
+-- ส่งสัญญาณสุ่ม Diamond Block
+SpawnBlockBtn.MouseButton1Click:Connect(function()
+	local spawnEvent = ReplicatedStorage:FindFirstChild("SpawnDiamondBlock")
+	if spawnEvent then
+		spawnEvent:FireServer()
+	else
+		warn("ไม่พบ RemoteEvent ชื่อ 'SpawnDiamondBlock' ใน ReplicatedStorage")
+	end
+end)
+
+-- ย่อ / สลับเปิด-ปิด UI
+Min.MouseButton1Click:Connect(function()
+	Main.Visible = false
+end)
+
+OpenButton.MouseButton1Click:Connect(function()
+	Main.Visible = not Main.Visible
+end)
+
+Close.MouseButton1Click:Connect(function()
+	gui:Destroy()
+end)
