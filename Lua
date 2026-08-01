@@ -268,7 +268,7 @@ ApplyRGBEffect(BtnStroke1, 1.2)
 
 -- 2. ปุ่มเปิด/ปิด วิ่งไว (Super Speed Toggle)
 local SpeedBtn = Instance.new("TextButton")
-SpeedBtn.Name = "SuperSpeedBtn"
+SpeedBtn.Name = "วิ่งไว "
 SpeedBtn.Parent = Content
 SpeedBtn.Position = UDim2.new(0.5, 0, 0.52, 0)
 SpeedBtn.AnchorPoint = Vector2.new(0.5, 0)
