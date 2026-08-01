@@ -3,6 +3,7 @@ local TweenService = game:GetService("TweenService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local SoundService = game:GetService("SoundService")
+local Stats = game:GetService("Stats")
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -44,7 +45,7 @@ local function ApplyRGBEffect(object, speed)
 		local hue = (tick() * speed) % 1
 		local color = Color3.fromHSV(hue, 0.8, 1)
 
-		if object:IsA("GuiObPlayClickSoundt") then
+		if object:IsA("GuiObject") then
 			if object:IsA("TextLabel") or object:IsA("TextButton") then
 				object.TextColor3 = color
 			end
@@ -55,7 +56,53 @@ local function ApplyRGBEffect(object, speed)
 	end)
 end
 
--- [[ สร้างหน้าหลัก ( Main UI Responsive ) ]]
+-- ==========================================
+-- [[ 1. แสดงผล FPS / Ping แบบไม่มีกรอบ (เฉพาะตัวหนังสือ) ]]
+-- ==========================================
+local PerfText = Instance.new("TextLabel")
+PerfText.Name = "PerfText"
+PerfText.Parent = gui
+PerfText.Size = UDim2.new(0, 200, 0, 50)
+PerfText.Position = UDim2.new(0, 15, 0, 15)
+PerfText.BackgroundTransparency = 1 -- โปร่งใส 100% ไม่มีกรอบ
+PerfText.Font = Enum.Font.GothamBold
+PerfText.TextColor3 = Color3.fromRGB(0, 255, 100)
+PerfText.TextSize = 14
+PerfText.TextXAlignment = Enum.TextXAlignment.Left
+PerfText.TextYAlignment = Enum.TextYAlignment.Top
+PerfText.Visible = false -- ปิดไว้เป็นค่าเริ่มต้น (ไปเปิดใน Settings)
+PerfText.Text = "FPS: -- | Ping: -- ms"
+
+-- เพิ่มเงาให้ตัวหนังสือ (TextStroke) เพื่อให้อ่านง่ายขึ้นบนทุกพื้นหลัง
+local TextStroke = Instance.new("UIStroke", PerfText)
+TextStroke.Thickness = 1.5
+TextStroke.Color = Color3.fromRGB(0, 0, 0)
+
+-- ระบบคำนวณ FPS / Ping
+local frameCount = 0
+local lastFpsUpdate = tick()
+local currentFps = 0
+
+RunService.RenderStepped:Connect(function()
+	frameCount = frameCount + 1
+	local now = tick()
+	
+	if now - lastFpsUpdate >= 1 then
+		currentFps = math.floor(frameCount / (now - lastFpsUpdate))
+		frameCount = 0
+		lastFpsUpdate = now
+	end
+	
+	if PerfText.Visible then
+		local ping = math.floor(Stats.Network.ServerStatsItem["Data Ping"]:GetValue())
+		
+		PerfText.Text = string.format("FPS: %d  |  Ping: %d ms", currentFps, ping)
+	end
+end)
+
+-- ==========================================
+-- [[ 2. สร้างหน้าหลัก ( Main UI Responsive ) ]]
+-- ==========================================
 local Main = Instance.new("Frame")
 Main.Name = "MainFrame"
 Main.Parent = gui
@@ -323,11 +370,33 @@ BtnStroke3.Thickness = 3
 BtnStroke3.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 ApplyRGBEffect(BtnStroke3, 1.2)
 
+-- 4. ปุ่มเปิด/ปิด FPS / Ping (อยู่ในหน้า Settings)
+local FpsToggleBtn = Instance.new("TextButton")
+FpsToggleBtn.Name = "FpsToggleBtn"
+FpsToggleBtn.Parent = Content
+FpsToggleBtn.Position = UDim2.new(0.5, 0, 0.22, 0)
+FpsToggleBtn.AnchorPoint = Vector2.new(0.5, 0)
+FpsToggleBtn.Size = UDim2.new(0.55, 0, 0.13, 0)
+FpsToggleBtn.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
+FpsToggleBtn.Text = "📊 แสดง FPS / Ping (OFF)"
+FpsToggleBtn.TextColor3 = Color3.new(1, 1, 1)
+FpsToggleBtn.Font = Enum.Font.GothamBold
+FpsToggleBtn.TextScaled = true
+FpsToggleBtn.Visible = false
+FpsToggleBtn.BorderSizePixel = 0
+
+Instance.new("UICorner", FpsToggleBtn).CornerRadius = UDim.new(0.2, 0)
+local BtnStroke4 = Instance.new("UIStroke", FpsToggleBtn)
+BtnStroke4.Thickness = 3
+BtnStroke4.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+ApplyRGBEffect(BtnStroke4, 1.2)
+
 -- [[ ระบบการทำงาน Event ต่างๆ ]]
 local function ResetContent()
 	SpawnBlockBtn.Visible = false
 	SpeedBtn.Visible = false
 	JumpBtn.Visible = false
+	FpsToggleBtn.Visible = false
 end
 
 Home.MouseButton1Click:Connect(function()
@@ -349,12 +418,27 @@ Settings.MouseButton1Click:Connect(function()
 	PlayClickSound()
 	Label.Text = "Settings"
 	ResetContent()
+	FpsToggleBtn.Visible = true
 end)
 
 Credits.MouseButton1Click:Connect(function()
 	PlayClickSound()
 	Label.Text = "Credits"
 	ResetContent()
+end)
+
+-- [[ สวิตช์ Toggle FPS/Ping Display ]]
+FpsToggleBtn.MouseButton1Click:Connect(function()
+	PlayClickSound()
+	PerfText.Visible = not PerfText.Visible
+	
+	if PerfText.Visible then
+		FpsToggleBtn.Text = "📊 แสดง FPS / Ping (ON)"
+		FpsToggleBtn.BackgroundColor3 = Color3.fromRGB(50, 180, 50)
+	else
+		FpsToggleBtn.Text = "📊 แสดง FPS / Ping (OFF)"
+		FpsToggleBtn.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
+	end
 end)
 
 -- ส่งสัญญาณสุ่ม Diamond Block
@@ -415,7 +499,7 @@ end)
 
 -- [[ ระบบเปิด/ปิด กระโดดสูง ]]
 local isJumpEnabled = false
-local jumpPowerValue = 150 -- ปรับความสูงกระโดดตรงนี้ได้ตามต้องการ (ค่าปกติคือ 50)
+local jumpPowerValue = 150
 local jumpConnection = nil
 
 local function EnableJumpLoop()
@@ -461,7 +545,7 @@ JumpBtn.MouseButton1Click:Connect(function()
 	end
 end)
 
--- เมื่อตัวละครเกิดใหม่ (ตายแล้วเกิดใหม่ / เข้าแมพ) ให้คงสถานะไว้
+-- เมื่อตัวละครเกิดใหม่ ให้คงสถานะความเร็วและการโดดไว้
 player.CharacterAdded:Connect(function(character)
 	task.wait(0.5)
 	if isSpeedEnabled then
@@ -487,5 +571,5 @@ Close.MouseButton1Click:Connect(function()
 	PlayClickSound()
 	DisableSpeedLoop()
 	DisableJumpLoop()
-	gui:Desroy()
+	gui:Destroy()
 end)
