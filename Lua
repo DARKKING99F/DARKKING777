@@ -253,7 +253,7 @@ Label.TextScaled = true
 Label.TextXAlignment = Enum.TextXAlignment.Center
 
 -- ==========================================
--- 📌 1. ปุ่มสำหรับหน้า Main Menu (ระบบ 1, 2, 3)
+-- 📌 เมนูหลัก (Main Features)
 -- ==========================================
 local SkeletonEspBtn = Instance.new("TextButton")
 SkeletonEspBtn.Name = "SkeletonEspBtn"
@@ -320,7 +320,7 @@ Instance.new("UICorner", FullbrightBtn).CornerRadius = UDim.new(0.2, 0)
 ApplyThemeColor(Instance.new("UIStroke", FullbrightBtn))
 
 -- ==========================================
--- ⚙ 2. ปุ่มสำหรับหน้า Settings (ระบบ 11, 15, 16)
+-- ⚙ ตั้งค่า (Settings & Utility)
 -- ==========================================
 local FpsInfoBtn = Instance.new("TextButton")
 FpsInfoBtn.Name = "FpsInfoBtn"
@@ -413,10 +413,54 @@ Credits.MouseButton1Click:Connect(function()
 end)
 
 -- ==========================================
--- ⚡ ฟังก์ชันการทำงานของแต่ละระบบ
+-- ⚡ ฟังก์ชันการทำงานของระบบ ESP และระบบอื่นๆ
 -- ==========================================
 
--- 1. Fullbright (มองในที่มืด)
+-- สถานะการเปิดใช้งาน
+local isSkeletonEspOn = false
+local isBoxEspOn = false
+local isNameEspOn = false
+
+-- 1. 🦴 Skeleton ESP
+SkeletonEspBtn.MouseButton1Click:Connect(function()
+	PlayClickSound()
+	isSkeletonEspOn = not isSkeletonEspOn
+	if isSkeletonEspOn then
+		SkeletonEspBtn.Text = "🦴 โครงกระดูก ESP (ON)"
+		SkeletonEspBtn.BackgroundColor3 = Color3.fromRGB(50, 180, 50)
+	else
+		SkeletonEspBtn.Text = "🦴 โครงกระดูก ESP (OFF)"
+		SkeletonEspBtn.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
+	end
+end)
+
+-- 2. 📦 Box ESP (กรอบ 2D)
+BoxEspBtn.MouseButton1Click:Connect(function()
+	PlayClickSound()
+	isBoxEspOn = not isBoxEspOn
+	if isBoxEspOn then
+		BoxEspBtn.Text = "📦 กรอบ 2D ESP (ON)"
+		BoxEspBtn.BackgroundColor3 = Color3.fromRGB(50, 180, 50)
+	else
+		BoxEspBtn.Text = "📦 กรอบ 2D ESP (OFF)"
+		BoxEspBtn.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
+	end
+end)
+
+-- 3. 🏷️ Name & Health ESP (ป้ายชื่อและเลือด)
+NameEspBtn.MouseButton1Click:Connect(function()
+	PlayClickSound()
+	isNameEspOn = not isNameEspOn
+	if isNameEspOn then
+		NameEspBtn.Text = "🏷️ ป้ายชื่อ & เลือด ESP (ON)"
+		NameEspBtn.BackgroundColor3 = Color3.fromRGB(50, 180, 50)
+	else
+		NameEspBtn.Text = "🏷️ ป้ายชื่อ & เลือด ESP (OFF)"
+		NameEspBtn.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
+	end
+end)
+
+-- 4. 💡 Fullbright (มองในที่มืด)
 local isFullbright = false
 local fbConnection
 FullbrightBtn.MouseButton1Click:Connect(function()
@@ -440,7 +484,7 @@ FullbrightBtn.MouseButton1Click:Connect(function()
 	end
 end)
 
--- 11. FPS / Ping Counter UI (แสดงผลมุมจอ)
+-- 5. 🕒 FPS / Ping Counter UI
 local isFpsInfoOn = false
 local fpsGui = nil
 FpsInfoBtn.MouseButton1Click:Connect(function()
@@ -486,7 +530,7 @@ FpsInfoBtn.MouseButton1Click:Connect(function()
 	end
 end)
 
--- 16. UI Theme Changer (เปลี่ยนสีธีม Hub)
+-- 6. 🎨 UI Theme Changer (เปลี่ยนสีธีม Hub)
 ThemeToggleBtn.MouseButton1Click:Connect(function()
 	PlayClickSound()
 	if currentThemeMode == "RGB" then
@@ -501,7 +545,7 @@ ThemeToggleBtn.MouseButton1Click:Connect(function()
 	end
 end)
 
--- 15. Player Viewer List (รายชื่อคนในเซิร์ฟเวอร์เบื้องต้น)
+-- 7. 📊 Player Viewer List (รายชื่อคนในเซิร์ฟเวอร์)
 PlayerViewerBtn.MouseButton1Click:Connect(function()
 	PlayClickSound()
 	print("--- รายชื่อผู้เล่นในเซิร์ฟเวอร์ ---")
