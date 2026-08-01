@@ -21,7 +21,7 @@ gui.Parent = playerGui
 local function PlayClickSound(soundId)
 	task.spawn(function()
 		local sound = Instance.new("Sound")
-		sound.SoundId = soundId or "rbxassetid://6895079853" -- เสียงคลิกมาตรฐาน
+		sound.SoundId = soundId or "rbxassetid://6895079853"
 		sound.Volume = 0.5
 		sound.Parent = SoundService
 		sound:Play()
@@ -264,9 +264,9 @@ Label.TextXAlignment = Enum.TextXAlignment.Center
 local SpawnBlockBtn = Instance.new("TextButton")
 SpawnBlockBtn.Name = "SpawnDiamondBlockBtn"
 SpawnBlockBtn.Parent = Content
-SpawnBlockBtn.Position = UDim2.new(0.5, 0, 0.3, 0)
+SpawnBlockBtn.Position = UDim2.new(0.5, 0, 0.22, 0)
 SpawnBlockBtn.AnchorPoint = Vector2.new(0.5, 0)
-SpawnBlockBtn.Size = UDim2.new(0.55, 0, 0.15, 0)
+SpawnBlockBtn.Size = UDim2.new(0.55, 0, 0.13, 0)
 SpawnBlockBtn.BackgroundColor3 = Color3.fromRGB(0, 140, 220)
 SpawnBlockBtn.Text = "💎 เสกไอเท็ม"
 SpawnBlockBtn.TextColor3 = Color3.new(1, 1, 1)
@@ -285,9 +285,9 @@ ApplyRGBEffect(BtnStroke1, 1.2)
 local SpeedBtn = Instance.new("TextButton")
 SpeedBtn.Name = "SuperSpeedBtn"
 SpeedBtn.Parent = Content
-SpeedBtn.Position = UDim2.new(0.5, 0, 0.52, 0)
+SpeedBtn.Position = UDim2.new(0.5, 0, 0.38, 0)
 SpeedBtn.AnchorPoint = Vector2.new(0.5, 0)
-SpeedBtn.Size = UDim2.new(0.55, 0, 0.15, 0)
+SpeedBtn.Size = UDim2.new(0.55, 0, 0.13, 0)
 SpeedBtn.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
 SpeedBtn.Text = "⚡ วิ่งไว (OFF)"
 SpeedBtn.TextColor3 = Color3.new(1, 1, 1)
@@ -302,10 +302,32 @@ BtnStroke2.Thickness = 3
 BtnStroke2.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 ApplyRGBEffect(BtnStroke2, 1.2)
 
+-- 3. ปุ่มเปิด/ปิด อมตะ (God Mode Toggle)
+local GodBtn = Instance.new("TextButton")
+GodBtn.Name = "GodModeBtn"
+GodBtn.Parent = Content
+GodBtn.Position = UDim2.new(0.5, 0, 0.54, 0)
+GodBtn.AnchorPoint = Vector2.new(0.5, 0)
+GodBtn.Size = UDim2.new(0.55, 0, 0.13, 0)
+GodBtn.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
+GodBtn.Text = "🛡️ อมตะ (OFF)"
+GodBtn.TextColor3 = Color3.new(1, 1, 1)
+GodBtn.Font = Enum.Font.GothamBold
+GodBtn.TextScaled = true
+GodBtn.Visible = false
+GodBtn.BorderSizePixel = 0
+
+Instance.new("UICorner", GodBtn).CornerRadius = UDim.new(0.2, 0)
+local BtnStroke3 = Instance.new("UIStroke", GodBtn)
+BtnStroke3.Thickness = 3
+BtnStroke3.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+ApplyRGBEffect(BtnStroke3, 1.2)
+
 -- [[ ระบบการทำงาน Event ต่างๆ ]]
 local function ResetContent()
 	SpawnBlockBtn.Visible = false
 	SpeedBtn.Visible = false
+	GodBtn.Visible = false
 end
 
 Home.MouseButton1Click:Connect(function()
@@ -320,6 +342,7 @@ MainTab.MouseButton1Click:Connect(function()
 	ResetContent()
 	SpawnBlockBtn.Visible = true
 	SpeedBtn.Visible = true
+	GodBtn.Visible = true
 end)
 
 Settings.MouseButton1Click:Connect(function()
@@ -345,15 +368,13 @@ SpawnBlockBtn.MouseButton1Click:Connect(function()
 	end
 end)
 
--- [[ ระบบเปิด/ปิด วิ่งไว แบบล็อกความเร็วต่อเนื่อง (Continuous Loop) ]]
+-- [[ ระบบเปิด/ปิด วิ่งไว ]]
 local isSpeedEnabled = false
 local speedMultiplier = 10
 local speedConnection = nil
 
 local function EnableSpeedLoop()
 	if speedConnection then speedConnection:Disconnect() end
-	
-	-- ใช้ Stepped คอยบังคับล็อกค่า WalkSpeed ไว้ตลอด ไม่ให้เกมรีเซ็ตกลับ
 	speedConnection = RunService.Stepped:Connect(function()
 		if isSpeedEnabled and player.Character then
 			local humanoid = player.Character:FindFirstChild("Humanoid")
@@ -392,11 +413,52 @@ SpeedBtn.MouseButton1Click:Connect(function()
 	end
 end)
 
--- เมื่อตัวละครเกิดใหม่
+-- [[ ระบบเปิด/ปิด อมตะ (God Mode) ]]
+local isGodEnabled = false
+local godConnection = nil
+
+local function EnableGodLoop()
+	if godConnection then godConnection:Disconnect() end
+	godConnection = RunService.Stepped:Connect(function()
+		if isGodEnabled and player.Character then
+			local humanoid = player.Character:FindFirstChild("Humanoid")
+			if humanoid then
+				humanoid.Health = humanoid.MaxHealth
+			end
+		end
+	end)
+end
+
+local function DisableGodLoop()
+	if godConnection then
+		godConnection:Disconnect()
+		godConnection = nil
+	end
+end
+
+GodBtn.MouseButton1Click:Connect(function()
+	PlayClickSound()
+	isGodEnabled = not isGodEnabled
+	
+	if isGodEnabled then
+		EnableGodLoop()
+		GodBtn.Text = "🛡️ อมตะ (ON)"
+		GodBtn.BackgroundColor3 = Color3.fromRGB(50, 180, 50)
+	else
+		DisableGodLoop()
+		GodBtn.Text = "🛡️ อมตะ (OFF)"
+		GodBtn.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
+	end
+end)
+
+-- เมื่อตัวละครเกิดใหม่ ให้คงสถานะเดิมไว้
 player.CharacterAdded:Connect(function()
+	task.wait(0.5)
 	if isSpeedEnabled then
-		task.wait(0.5)
 		EnableSpeedLoop()
+	end
+	if isGodEnabled then
+		EnableGodLoop()
 	end
 end)
 
@@ -414,5 +476,6 @@ end)
 Close.MouseButton1Click:Connect(function()
 	PlayClickSound()
 	DisableSpeedLoop()
+	DisableGodLoop()
 	gui:Destroy()
 end)
