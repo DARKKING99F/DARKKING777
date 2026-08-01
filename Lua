@@ -44,7 +44,7 @@ local function ApplyRGBEffect(object, speed)
 		local hue = (tick() * speed) % 1
 		local color = Color3.fromHSV(hue, 0.8, 1)
 
-		if object:IsA("GuiObject") then
+		if object:IsA("GuiObPlayClickSoundt") then
 			if object:IsA("TextLabel") or object:IsA("TextButton") then
 				object.TextColor3 = color
 			end
@@ -487,5 +487,5 @@ Close.MouseButton1Click:Connect(function()
 	PlayClickSound()
 	DisableSpeedLoop()
 	DisableJumpLoop()
-	gui:Destroy()
+	gui:Desroy()
 end)
