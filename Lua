@@ -3,6 +3,8 @@ local TweenService = game:GetService("TweenService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local SoundService = game:GetService("SoundService")
+local UserInputService = game:GetService("UserInputService")
+local Workspace = game:GetService("Workspace")
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -68,11 +70,11 @@ Main.Active = true
 Main.Draggable = true
 
 local MainSizeConstraint = Instance.new("UISizeConstraint", Main)
-MainSizeConstraint.MinSize = Vector2.new(380, 260)
-MainSizeConstraint.MaxSize = Vector2.new(650, 400)
+MainSizeConstraint.MinSize = Vector2.new(380, 300)
+MainSizeConstraint.MaxSize = Vector2.new(650, 480)
 
 local MainAspect = Instance.new("UIAspectRatioConstraint", Main)
-MainAspect.AspectRatio = 1.625
+MainAspect.AspectRatio = 1.4
 
 local MainCorner = Instance.new("UICorner", Main)
 MainCorner.CornerRadius = UDim.new(0.04, 0)
@@ -117,7 +119,7 @@ ApplyRGBEffect(OpenStroke, 1.5)
 local Top = Instance.new("Frame")
 Top.Name = "TitleBar"
 Top.Parent = Main
-Top.Size = UDim2.new(1, 0, 0.125, 0)
+Top.Size = UDim2.new(1, 0, 0.12, 0)
 Top.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
 Top.BorderSizePixel = 0
 
@@ -176,8 +178,8 @@ Instance.new("UICorner", Close).CornerRadius = UDim.new(0.2, 0)
 local Side = Instance.new("Frame")
 Side.Name = "Sidebar"
 Side.Parent = Main
-Side.Position = UDim2.new(0, 0, 0.125, 0)
-Side.Size = UDim2.new(0.3, 0, 0.875, 0)
+Side.Position = UDim2.new(0, 0, 0.12, 0)
+Side.Size = UDim2.new(0.3, 0, 0.88, 0)
 Side.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
 Side.BorderSizePixel = 0
 
@@ -244,15 +246,15 @@ local Credits = CreateTab("📜 Credits")
 local Content = Instance.new("Frame")
 Content.Name = "ContentArea"
 Content.Parent = Main
-Content.Position = UDim2.new(0.3, 0, 0.125, 0)
-Content.Size = UDim2.new(0.7, 0, 0.875, 0)
+Content.Position = UDim2.new(0.3, 0, 0.12, 0)
+Content.Size = UDim2.new(0.7, 0, 0.88, 0)
 Content.BackgroundTransparency = 1
 
 local Label = Instance.new("TextLabel")
 Label.Name = "ContentTitle"
 Label.Parent = Content
-Label.Size = UDim2.new(0.9, 0, 0.15, 0)
-Label.Position = UDim2.new(0.05, 0, 0.05, 0)
+Label.Size = UDim2.new(0.9, 0, 0.12, 0)
+Label.Position = UDim2.new(0.05, 0, 0.03, 0)
 Label.BackgroundTransparency = 1
 Label.Text = "DARKKING HUB!"
 Label.TextColor3 = Color3.new(1, 1, 1)
@@ -264,9 +266,9 @@ Label.TextXAlignment = Enum.TextXAlignment.Center
 local SpawnBlockBtn = Instance.new("TextButton")
 SpawnBlockBtn.Name = "SpawnDiamondBlockBtn"
 SpawnBlockBtn.Parent = Content
-SpawnBlockBtn.Position = UDim2.new(0.5, 0, 0.22, 0)
+SpawnBlockBtn.Position = UDim2.new(0.5, 0, 0.17, 0)
 SpawnBlockBtn.AnchorPoint = Vector2.new(0.5, 0)
-SpawnBlockBtn.Size = UDim2.new(0.55, 0, 0.13, 0)
+SpawnBlockBtn.Size = UDim2.new(0.6, 0, 0.11, 0)
 SpawnBlockBtn.BackgroundColor3 = Color3.fromRGB(0, 140, 220)
 SpawnBlockBtn.Text = "💎 เสกไอเท็ม"
 SpawnBlockBtn.TextColor3 = Color3.new(1, 1, 1)
@@ -274,20 +276,16 @@ SpawnBlockBtn.Font = Enum.Font.GothamBold
 SpawnBlockBtn.TextScaled = true
 SpawnBlockBtn.Visible = false
 SpawnBlockBtn.BorderSizePixel = 0
-
 Instance.new("UICorner", SpawnBlockBtn).CornerRadius = UDim.new(0.2, 0)
-local BtnStroke1 = Instance.new("UIStroke", SpawnBlockBtn)
-BtnStroke1.Thickness = 3
-BtnStroke1.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-ApplyRGBEffect(BtnStroke1, 1.2)
+ApplyRGBEffect(Instance.new("UIStroke", SpawnBlockBtn), 1.2)
 
--- 2. ปุ่มเปิด/ปิด วิ่งไว (Super Speed Toggle)
+-- 2. ปุ่มวิ่งไว (Super Speed)
 local SpeedBtn = Instance.new("TextButton")
 SpeedBtn.Name = "SuperSpeedBtn"
 SpeedBtn.Parent = Content
-SpeedBtn.Position = UDim2.new(0.5, 0, 0.38, 0)
+SpeedBtn.Position = UDim2.new(0.5, 0, 0.30, 0)
 SpeedBtn.AnchorPoint = Vector2.new(0.5, 0)
-SpeedBtn.Size = UDim2.new(0.55, 0, 0.13, 0)
+SpeedBtn.Size = UDim2.new(0.6, 0, 0.11, 0)
 SpeedBtn.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
 SpeedBtn.Text = "⚡ วิ่งไว (OFF)"
 SpeedBtn.TextColor3 = Color3.new(1, 1, 1)
@@ -295,39 +293,67 @@ SpeedBtn.Font = Enum.Font.GothamBold
 SpeedBtn.TextScaled = true
 SpeedBtn.Visible = false
 SpeedBtn.BorderSizePixel = 0
-
 Instance.new("UICorner", SpeedBtn).CornerRadius = UDim.new(0.2, 0)
-local BtnStroke2 = Instance.new("UIStroke", SpeedBtn)
-BtnStroke2.Thickness = 3
-BtnStroke2.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-ApplyRGBEffect(BtnStroke2, 1.2)
+ApplyRGBEffect(Instance.new("UIStroke", SpeedBtn), 1.2)
 
--- 3. ปุ่มเปิด/ปิด กระโดดสูง (High Jump Toggle)
-local JumpBtn = Instance.new("TextButton")
-JumpBtn.Name = "HighJumpBtn"
-JumpBtn.Parent = Content
-JumpBtn.Position = UDim2.new(0.5, 0, 0.54, 0)
-JumpBtn.AnchorPoint = Vector2.new(0.5, 0)
-JumpBtn.Size = UDim2.new(0.55, 0, 0.13, 0)
-JumpBtn.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
-JumpBtn.Text = "🦘 กระโดดสูง (OFF)"
-JumpBtn.TextColor3 = Color3.new(1, 1, 1)
-JumpBtn.Font = Enum.Font.GothamBold
-JumpBtn.TextScaled = true
-JumpBtn.Visible = false
-JumpBtn.BorderSizePixel = 0
+-- 3. ปุ่มบินทะลุกำแพง (Fly / Noclip) [ระบบที่ 1]
+local FlyBtn = Instance.new("TextButton")
+FlyBtn.Name = "FlyBtn"
+FlyBtn.Parent = Content
+FlyBtn.Position = UDim2.new(0.5, 0, 0.43, 0)
+FlyBtn.AnchorPoint = Vector2.new(0.5, 0)
+FlyBtn.Size = UDim2.new(0.6, 0, 0.11, 0)
+FlyBtn.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
+FlyBtn.Text = "👻 บินทะลุ (OFF)"
+FlyBtn.TextColor3 = Color3.new(1, 1, 1)
+FlyBtn.Font = Enum.Font.GothamBold
+FlyBtn.TextScaled = true
+FlyBtn.Visible = false
+FlyBtn.BorderSizePixel = 0
+Instance.new("UICorner", FlyBtn).CornerRadius = UDim.new(0.2, 0)
+ApplyRGBEffect(Instance.new("UIStroke", FlyBtn), 1.2)
 
-Instance.new("UICorner", JumpBtn).CornerRadius = UDim.new(0.2, 0)
-local BtnStroke3 = Instance.new("UIStroke", JumpBtn)
-BtnStroke3.Thickness = 3
-BtnStroke3.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-ApplyRGBEffect(BtnStroke3, 1.2)
+-- 4. ปุ่มกระโดดรัวกลางอากาศ (Infinite Jump) [ระบบที่ 3]
+local InfJumpBtn = Instance.new("TextButton")
+InfJumpBtn.Name = "InfJumpBtn"
+InfJumpBtn.Parent = Content
+InfJumpBtn.Position = UDim2.new(0.5, 0, 0.56, 0)
+InfJumpBtn.AnchorPoint = Vector2.new(0.5, 0)
+InfJumpBtn.Size = UDim2.new(0.6, 0, 0.11, 0)
+InfJumpBtn.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
+InfJumpBtn.Text = "🌀 โดดกลางอากาศ (OFF)"
+InfJumpBtn.TextColor3 = Color3.new(1, 1, 1)
+InfJumpBtn.Font = Enum.Font.GothamBold
+InfJumpBtn.TextScaled = true
+InfJumpBtn.Visible = false
+InfJumpBtn.BorderSizePixel = 0
+Instance.new("UICorner", InfJumpBtn).CornerRadius = UDim.new(0.2, 0)
+ApplyRGBEffect(Instance.new("UIStroke", InfJumpBtn), 1.2)
 
--- [[ ระบบการทำงาน Event ต่างๆ ]]
+-- 5. ปุ่มวาร์ปกลับจุดเซฟ (Teleport SafeZone) [ระบบที่ 4]
+local TpBtn = Instance.new("TextButton")
+TpBtn.Name = "TpBtn"
+TpBtn.Parent = Content
+TpBtn.Position = UDim2.new(0.5, 0, 0.69, 0)
+TpBtn.AnchorPoint = Vector2.new(0.5, 0)
+TpBtn.Size = UDim2.new(0.6, 0, 0.11, 0)
+TpBtn.BackgroundColor3 = Color3.fromRGB(0, 180, 100)
+TpBtn.Text = "📍 วาร์ปกลับจุดเกิด"
+TpBtn.TextColor3 = Color3.new(1, 1, 1)
+TpBtn.Font = Enum.Font.GothamBold
+TpBtn.TextScaled = true
+TpBtn.Visible = false
+TpBtn.BorderSizePixel = 0
+Instance.new("UICorner", TpBtn).CornerRadius = UDim.new(0.2, 0)
+ApplyRGBEffect(Instance.new("UIStroke", TpBtn), 1.2)
+
+-- [[ จัดการการแสดงผล Tab ]]
 local function ResetContent()
 	SpawnBlockBtn.Visible = false
 	SpeedBtn.Visible = false
-	JumpBtn.Visible = false
+	FlyBtn.Visible = false
+	InfJumpBtn.Visible = false
+	TpBtn.Visible = false
 end
 
 Home.MouseButton1Click:Connect(function()
@@ -342,7 +368,9 @@ MainTab.MouseButton1Click:Connect(function()
 	ResetContent()
 	SpawnBlockBtn.Visible = true
 	SpeedBtn.Visible = true
-	JumpBtn.Visible = true
+	FlyBtn.Visible = true
+	InfJumpBtn.Visible = true
+	TpBtn.Visible = true
 end)
 
 Settings.MouseButton1Click:Connect(function()
@@ -357,122 +385,116 @@ Credits.MouseButton1Click:Connect(function()
 	ResetContent()
 end)
 
--- ส่งสัญญาณสุ่ม Diamond Block
+-- เสกไอเท็ม
 SpawnBlockBtn.MouseButton1Click:Connect(function()
 	PlayClickSound()
 	local spawnEvent = ReplicatedStorage:FindFirstChild("SpawnDiamondBlock")
 	if spawnEvent then
 		spawnEvent:FireServer()
 	else
-		warn("ไม่พบ RemoteEvent ชื่อ 'SpawnDiamondBlock' ใน ReplicatedStorage")
+		warn("ไม่พบ RemoteEvent ชื่อ 'SpawnDiamondBlock'")
 	end
 end)
 
--- [[ ระบบเปิด/ปิด วิ่งไว ]]
+-- [[ ระบบวิ่งไว ]]
 local isSpeedEnabled = false
-local speedMultiplier = 10
 local speedConnection = nil
-
-local function EnableSpeedLoop()
-	if speedConnection then speedConnection:Disconnect() end
-	speedConnection = RunService.Stepped:Connect(function()
-		if isSpeedEnabled and player.Character then
-			local humanoid = player.Character:FindFirstChild("Humanoid")
-			if humanoid then
-				humanoid.WalkSpeed = 16 * speedMultiplier
-			end
-		end
-	end)
-end
-
-local function DisableSpeedLoop()
-	if speedConnection then
-		speedConnection:Disconnect()
-		speedConnection = nil
-	end
-	if player.Character then
-		local humanoid = player.Character:FindFirstChild("Humanoid")
-		if humanoid then
-			humanoid.WalkSpeed = 16
-		end
-	end
-end
-
 SpeedBtn.MouseButton1Click:Connect(function()
 	PlayClickSound()
 	isSpeedEnabled = not isSpeedEnabled
-	
 	if isSpeedEnabled then
-		EnableSpeedLoop()
 		SpeedBtn.Text = "⚡ วิ่งไว (ON)"
 		SpeedBtn.BackgroundColor3 = Color3.fromRGB(50, 180, 50)
+		speedConnection = RunService.Stepped:Connect(function()
+			if player.Character and player.Character:FindFirstChild("Humanoid") then
+				player.Character.Humanoid.WalkSpeed = 160
+			end
+		end)
 	else
-		DisableSpeedLoop()
+		if speedConnection then speedConnection:Disconnect() end
 		SpeedBtn.Text = "⚡ วิ่งไว (OFF)"
 		SpeedBtn.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
+		if player.Character and player.Character:FindFirstChild("Humanoid") then
+			player.Character.Humanoid.WalkSpeed = 16
+		end
 	end
 end)
 
--- [[ ระบบเปิด/ปิด กระโดดสูง ]]
-local isJumpEnabled = false
-local jumpPowerValue = 150 -- ปรับความสูงกระโดดตรงนี้ได้ตามต้องการ (ค่าปกติคือ 50)
-local jumpConnection = nil
-
-local function EnableJumpLoop()
-	if jumpConnection then jumpConnection:Disconnect() end
-	jumpConnection = RunService.Stepped:Connect(function()
-		if isJumpEnabled and player.Character then
-			local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
-			if humanoid then
-				humanoid.UseJumpPower = true
-				humanoid.JumpPower = jumpPowerValue
-				humanoid.JumpHeight = jumpPowerValue / 3
+-- [[ ระบบบินทะลุกำแพง (Fly / Noclip) ]]
+local isFlyEnabled = false
+local flyConnection = nil
+FlyBtn.MouseButton1Click:Connect(function()
+	PlayClickSound()
+	isFlyEnabled = not isFlyEnabled
+	if isFlyEnabled then
+		FlyBtn.Text = "👻 บินทะลุ (ON)"
+		FlyBtn.BackgroundColor3 = Color3.fromRGB(50, 180, 50)
+		
+		flyConnection = RunService.Stepped:Connect(function()
+			local char = player.Character
+			if char and char:FindFirstChild("HumanoidRootPart") and char:FindFirstChild("Humanoid") then
+				char.Humanoid.PlatformStand = true
+				-- ปิดการชน (Noclip)
+				for _, part in ipairs(char:GetDescendants()) do
+					if part:IsA("BasePart") then
+						part.CanCollide = false
+					end
+				end
+				-- ลอยตัวค้างบนอากาศ
+				local hrp = char.HumanoidRootPart
+				hrp.Velocity = Vector3.new(0, 1, 0)
 			end
+		end)
+	else
+		if flyConnection then flyConnection:Disconnect() end
+		FlyBtn.Text = "👻 บินทะลุ (OFF)"
+		FlyBtn.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
+		if player.Character and player.Character:FindFirstChild("Humanoid") then
+			player.Character.Humanoid.PlatformStand = false
 		end
-	end)
-end
-
-local function DisableJumpLoop()
-	if jumpConnection then
-		jumpConnection:Disconnect()
-		jumpConnection = nil
 	end
-	if player.Character then
+end)
+
+-- [[ ระบบกระโดดกลางอากาศรัวๆ (Infinite Jump) ]]
+local isInfJumpEnabled = false
+InfJumpBtn.MouseButton1Click:Connect(function()
+	PlayClickSound()
+	isInfJumpEnabled = not isInfJumpEnabled
+	if isInfJumpEnabled then
+		InfJumpBtn.Text = "🌀 โดดกลางอากาศ (ON)"
+		InfJumpBtn.BackgroundColor3 = Color3.fromRGB(50, 180, 50)
+	else
+		InfJumpBtn.Text = "🌀 โดดกลางอากาศ (OFF)"
+		InfJumpBtn.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
+	end
+end)
+
+UserInputService.JumpRequest:Connect(function()
+	if isInfJumpEnabled and player.Character then
 		local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
 		if humanoid then
-			humanoid.JumpPower = 50
-			humanoid.JumpHeight = 7.2
+			humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
 		end
 	end
-end
+end)
 
-JumpBtn.MouseButton1Click:Connect(function()
+-- [[ ระบบวาร์ปกลับจุดเกิด (Teleport SafeZone) ]]
+TpBtn.MouseButton1Click:Connect(function()
 	PlayClickSound()
-	isJumpEnabled = not isJumpEnabled
-	
-	if isJumpEnabled then
-		EnableJumpLoop()
-		JumpBtn.Text = "🦘 กระโดดสูง (ON)"
-		JumpBtn.BackgroundColor3 = Color3.fromRGB(50, 180, 50)
-	else
-		DisableJumpLoop()
-		JumpBtn.Text = "🦘 กระโดดสูง (OFF)"
-		JumpBtn.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
+	local char = player.Character
+	if char and char:FindFirstChild("HumanoidRootPart") then
+		-- ค้นหาจุด SpawnLocation หรือพาตัวละครกลับจุดเริ่มต้น
+		local spawnLocation = Workspace:FindFirstChildWhichIsA("SpawnLocation", true)
+		if spawnLocation then
+			char.HumanoidRootPart.CFrame = spawnLocation.CFrame + Vector3.new(0, 3, 0)
+		else
+			-- ถ้าไม่เจอเซ็ตตำแหน่งขึ้นไปข้างบนแทน
+			char.HumanoidRootPart.CFrame = char.HumanoidRootPart.CFrame + Vector3.new(0, 10, 0)
+		end
 	end
 end)
 
--- เมื่อตัวละครเกิดใหม่ (ตายแล้วเกิดใหม่ / เข้าแมพ) ให้คงสถานะไว้
-player.CharacterAdded:Connect(function(character)
-	task.wait(0.5)
-	if isSpeedEnabled then
-		EnableSpeedLoop()
-	end
-	if isJumpEnabled then
-		EnableJumpLoop()
-	end
-end)
-
--- ย่อ / สลับเปิด-ปิด UI
+-- ควบคุมปุ่มเปิด/ปิด UI หลัก
 Min.MouseButton1Click:Connect(function()
 	PlayClickSound()
 	Main.Visible = false
@@ -485,7 +507,6 @@ end)
 
 Close.MouseButton1Click:Connect(function()
 	PlayClickSound()
-	DisableSpeedLoop()
-	DisableJumpLoop()
+	if flyConnection then flyConnection:Disconnect() end
 	gui:Destroy()
 end)
