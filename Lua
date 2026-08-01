@@ -302,23 +302,23 @@ BtnStroke2.Thickness = 3
 BtnStroke2.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 ApplyRGBEffect(BtnStroke2, 1.2)
 
--- 3. ปุ่มเปิด/ปิด อมตะ (ForceField God Mode Toggle)
-local GodBtn = Instance.new("TextButton")
-GodBtn.Name = "GodModeBtn"
-GodBtn.Parent = Content
-GodBtn.Position = UDim2.new(0.5, 0, 0.54, 0)
-GodBtn.AnchorPoint = Vector2.new(0.5, 0)
-GodBtn.Size = UDim2.new(0.55, 0, 0.13, 0)
-GodBtn.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
-GodBtn.Text = "🛡️ อมตะ (OFF)"
-GodBtn.TextColor3 = Color3.new(1, 1, 1)
-GodBtn.Font = Enum.Font.GothamBold
-GodBtn.TextScaled = true
-GodBtn.Visible = false
-GodBtn.BorderSizePixel = 0
+-- 3. ปุ่มเปิด/ปิด กระโดดสูง (High Jump Toggle)
+local JumpBtn = Instance.new("TextButton")
+JumpBtn.Name = "HighJumpBtn"
+JumpBtn.Parent = Content
+JumpBtn.Position = UDim2.new(0.5, 0, 0.54, 0)
+JumpBtn.AnchorPoint = Vector2.new(0.5, 0)
+JumpBtn.Size = UDim2.new(0.55, 0, 0.13, 0)
+JumpBtn.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
+JumpBtn.Text = "🦘 กระโดดสูง (OFF)"
+JumpBtn.TextColor3 = Color3.new(1, 1, 1)
+JumpBtn.Font = Enum.Font.GothamBold
+JumpBtn.TextScaled = true
+JumpBtn.Visible = false
+JumpBtn.BorderSizePixel = 0
 
-Instance.new("UICorner", GodBtn).CornerRadius = UDim.new(0.2, 0)
-local BtnStroke3 = Instance.new("UIStroke", GodBtn)
+Instance.new("UICorner", JumpBtn).CornerRadius = UDim.new(0.2, 0)
+local BtnStroke3 = Instance.new("UIStroke", JumpBtn)
 BtnStroke3.Thickness = 3
 BtnStroke3.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 ApplyRGBEffect(BtnStroke3, 1.2)
@@ -327,7 +327,7 @@ ApplyRGBEffect(BtnStroke3, 1.2)
 local function ResetContent()
 	SpawnBlockBtn.Visible = false
 	SpeedBtn.Visible = false
-	GodBtn.Visible = false
+	JumpBtn.Visible = false
 end
 
 Home.MouseButton1Click:Connect(function()
@@ -342,7 +342,7 @@ MainTab.MouseButton1Click:Connect(function()
 	ResetContent()
 	SpawnBlockBtn.Visible = true
 	SpeedBtn.Visible = true
-	GodBtn.Visible = true
+	JumpBtn.Visible = true
 end)
 
 Settings.MouseButton1Click:Connect(function()
@@ -413,71 +413,62 @@ SpeedBtn.MouseButton1Click:Connect(function()
 	end
 end)
 
--- [[ ระบบเปิด/ปิด บาเรียอมตะถาวร (ForceField Loop) ]]
-local isGodEnabled = false
-local godConnection = nil
+-- [[ ระบบเปิด/ปิด กระโดดสูง ]]
+local isJumpEnabled = false
+local jumpPowerValue = 150 -- ปรับความสูงกระโดดตรงนี้ได้ตามต้องการ (ค่าปกติคือ 50)
+local jumpConnection = nil
 
-local function EnableGodLoop()
-	if godConnection then godConnection:Disconnect() end
-	
-	-- คอยตรวจจับทุกเฟรมว่า ForceField ยังอยู่ไหม ถ้าหายไปให้สร้างใหม่ทันที
-	godConnection = RunService.Stepped:Connect(function()
-		if isGodEnabled and player.Character then
-			local char = player.Character
-			local ff = char:FindFirstChildOfClass("ForceField")
-			
-			if not ff then
-				local newFF = Instance.new("ForceField")
-				newFF.Name = "PermanentGodShield"
-				newFF.Visible = true
-				newFF.Parent = char
-			end
-			
-			-- ล็อกเลือดให้อยู่ที่ค่า Max เผื่อกรณีเกมใช้วิธีดาเมจผ่าน ForceField
-			local humanoid = char:FindFirstChildOfClass("Humanoid")
+local function EnableJumpLoop()
+	if jumpConnection then jumpConnection:Disconnect() end
+	jumpConnection = RunService.Stepped:Connect(function()
+		if isJumpEnabled and player.Character then
+			local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
 			if humanoid then
-				humanoid.Health = humanoid.MaxHealth
+				humanoid.UseJumpPower = true
+				humanoid.JumpPower = jumpPowerValue
+				humanoid.JumpHeight = jumpPowerValue / 3
 			end
 		end
 	end)
 end
 
-local function DisableGodLoop()
-	if godConnection then
-		godConnection:Disconnect()
-		godConnection = nil
+local function DisableJumpLoop()
+	if jumpConnection then
+		jumpConnection:Disconnect()
+		jumpConnection = nil
 	end
 	if player.Character then
-		local ff = player.Character:FindFirstChildOfClass("ForceField")
-		if ff then
-			ff:Destroy()
+		local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
+		if humanoid then
+			humanoid.JumpPower = 50
+			humanoid.JumpHeight = 7.2
 		end
 	end
 end
 
-GodBtn.MouseButton1Click:Connect(function()
+JumpBtn.MouseButton1Click:Connect(function()
 	PlayClickSound()
-	isGodEnabled = not isGodEnabled
+	isJumpEnabled = not isJumpEnabled
 	
-	if isGodEnabled then
-		EnableGodLoop()
-		GodBtn.Text = "🛡️ อมตะ (ON)"
-		GodBtn.BackgroundColor3 = Color3.fromRGB(50, 180, 50)
+	if isJumpEnabled then
+		EnableJumpLoop()
+		JumpBtn.Text = "🦘 กระโดดสูง (ON)"
+		JumpBtn.BackgroundColor3 = Color3.fromRGB(50, 180, 50)
 	else
-		DisableGodLoop()
-		GodBtn.Text = "🛡️ อมตะ (OFF)"
-		GodBtn.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
+		DisableJumpLoop()
+		JumpBtn.Text = "🦘 กระโดดสูง (OFF)"
+		JumpBtn.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
 	end
 end)
 
--- เมื่อตัวละครเกิดใหม่ (ตายแล้วเกิดใหม่ / เข้าแมพ) ให้รันระบบเดิมต่ออัตโนมัติ
+-- เมื่อตัวละครเกิดใหม่ (ตายแล้วเกิดใหม่ / เข้าแมพ) ให้คงสถานะไว้
 player.CharacterAdded:Connect(function(character)
 	task.wait(0.5)
 	if isSpeedEnabled then
 		EnableSpeedLoop()
 	end
-	if isGodEnabled then
-		EnableGodLoop()
+	if isJumpEnabled then
+		EnableJumpLoop()
 	end
 end)
 
@@ -495,6 +486,6 @@ end)
 Close.MouseButton1Click:Connect(function()
 	PlayClickSound()
 	DisableSpeedLoop()
-	DisableGodLoop()
+	DisableJumpLoop()
 	gui:Destroy()
 end)
