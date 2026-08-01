@@ -2,6 +2,7 @@ local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
+local SoundService = game:GetService("SoundService")
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -15,6 +16,20 @@ local gui = Instance.new("ScreenGui")
 gui.Name = "DARKKING_UI"
 gui.ResetOnSpawn = false
 gui.Parent = playerGui
+
+-- [[ ฟังก์ชันสำหรับเล่นเสียง Click ]]
+local function PlayClickSound(soundId)
+	task.spawn(function()
+		local sound = Instance.new("Sound")
+		sound.SoundId = soundId or "rbxassetid://6895079853" -- เสียงคลิกมาตรฐาน
+		sound.Volume = 0.5
+		sound.Parent = SoundService
+		sound:Play()
+		sound.Ended:Connect(function()
+			sound:Destroy()
+		end)
+	end)
+end
 
 -- [[ ฟังก์ชันสำหรับสร้างเอฟเฟกต์ไฟ RGB ]]
 local function ApplyRGBEffect(object, speed)
@@ -268,12 +283,12 @@ ApplyRGBEffect(BtnStroke1, 1.2)
 
 -- 2. ปุ่มเปิด/ปิด วิ่งไว (Super Speed Toggle)
 local SpeedBtn = Instance.new("TextButton")
-SpeedBtn.Name = "วิ่งไว "
+SpeedBtn.Name = "SuperSpeedBtn"
 SpeedBtn.Parent = Content
 SpeedBtn.Position = UDim2.new(0.5, 0, 0.52, 0)
 SpeedBtn.AnchorPoint = Vector2.new(0.5, 0)
 SpeedBtn.Size = UDim2.new(0.55, 0, 0.15, 0)
-SpeedBtn.BackgroundColor3 = Color3.fromRGB(180, 50, 50) -- สีแดงตอนปิด
+SpeedBtn.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
 SpeedBtn.Text = "⚡ วิ่งไว (OFF)"
 SpeedBtn.TextColor3 = Color3.new(1, 1, 1)
 SpeedBtn.Font = Enum.Font.GothamBold
@@ -294,11 +309,13 @@ local function ResetContent()
 end
 
 Home.MouseButton1Click:Connect(function()
+	PlayClickSound()
 	Label.Text = "Home"
 	ResetContent()
 end)
 
 MainTab.MouseButton1Click:Connect(function()
+	PlayClickSound()
 	Label.Text = "Main Menu"
 	ResetContent()
 	SpawnBlockBtn.Visible = true
@@ -306,17 +323,20 @@ MainTab.MouseButton1Click:Connect(function()
 end)
 
 Settings.MouseButton1Click:Connect(function()
+	PlayClickSound()
 	Label.Text = "Settings"
 	ResetContent()
 end)
 
 Credits.MouseButton1Click:Connect(function()
+	PlayClickSound()
 	Label.Text = "Credits"
 	ResetContent()
 end)
 
 -- ส่งสัญญาณสุ่ม Diamond Block
 SpawnBlockBtn.MouseButton1Click:Connect(function()
+	PlayClickSound()
 	local spawnEvent = ReplicatedStorage:FindFirstChild("SpawnDiamondBlock")
 	if spawnEvent then
 		spawnEvent:FireServer()
@@ -325,49 +345,74 @@ SpawnBlockBtn.MouseButton1Click:Connect(function()
 	end
 end)
 
--- ระบบเปิด/ปิด วิ่งไว (Toggle Speed)
+-- [[ ระบบเปิด/ปิด วิ่งไว แบบล็อกความเร็วต่อเนื่อง (Continuous Loop) ]]
 local isSpeedEnabled = false
 local speedMultiplier = 10
+local speedConnection = nil
+
+local function EnableSpeedLoop()
+	if speedConnection then speedConnection:Disconnect() end
+	
+	-- ใช้ Stepped คอยบังคับล็อกค่า WalkSpeed ไว้ตลอด ไม่ให้เกมรีเซ็ตกลับ
+	speedConnection = RunService.Stepped:Connect(function()
+		if isSpeedEnabled and player.Character then
+			local humanoid = player.Character:FindFirstChild("Humanoid")
+			if humanoid then
+				humanoid.WalkSpeed = 16 * speedMultiplier
+			end
+		end
+	end)
+end
+
+local function DisableSpeedLoop()
+	if speedConnection then
+		speedConnection:Disconnect()
+		speedConnection = nil
+	end
+	if player.Character then
+		local humanoid = player.Character:FindFirstChild("Humanoid")
+		if humanoid then
+			humanoid.WalkSpeed = 16
+		end
+	end
+end
 
 SpeedBtn.MouseButton1Click:Connect(function()
+	PlayClickSound()
 	isSpeedEnabled = not isSpeedEnabled
 	
-	local character = player.Character
-	if character and character:FindFirstChild("Humanoid") then
-		local humanoid = character.Humanoid
-		if isSpeedEnabled then
-			humanoid.WalkSpeed = 16 * speedMultiplier
-			SpeedBtn.Text = "⚡ วิ่งไว (ON)"
-			SpeedBtn.BackgroundColor3 = Color3.fromRGB(50, 180, 50) -- เปลี่ยนเป็นสีเขียวเมื่อเปิด
-		else
-			humanoid.WalkSpeed = 16 -- ความเร็วปกติ
-			SpeedBtn.Text = "⚡ วิ่งไว (OFF)"
-			SpeedBtn.BackgroundColor3 = Color3.fromRGB(180, 50, 50) -- กลับเป็นสีแดงเมื่อปิด
-		end
+	if isSpeedEnabled then
+		EnableSpeedLoop()
+		SpeedBtn.Text = "⚡ วิ่งไว (ON)"
+		SpeedBtn.BackgroundColor3 = Color3.fromRGB(50, 180, 50)
+	else
+		DisableSpeedLoop()
+		SpeedBtn.Text = "⚡ วิ่งไว (OFF)"
+		SpeedBtn.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
 	end
 end)
 
--- เมื่อตัวละครเกิดใหม่ ให้เช็คสถานะว่าเปิดวิ่งไวอยู่ไหม
-player.CharacterAdded:Connect(function(character)
-	local humanoid = character:WaitForChild("Humanoid", 5)
-	if humanoid then
-		if isSpeedEnabled then
-			humanoid.WalkSpeed = 16 * speedMultiplier
-		else
-			humanoid.WalkSpeed = 16
-		end
+-- เมื่อตัวละครเกิดใหม่
+player.CharacterAdded:Connect(function()
+	if isSpeedEnabled then
+		task.wait(0.5)
+		EnableSpeedLoop()
 	end
 end)
 
 -- ย่อ / สลับเปิด-ปิด UI
 Min.MouseButton1Click:Connect(function()
+	PlayClickSound()
 	Main.Visible = false
 end)
 
 OpenButton.MouseButton1Click:Connect(function()
+	PlayClickSound()
 	Main.Visible = not Main.Visible
 end)
 
 Close.MouseButton1Click:Connect(function()
+	PlayClickSound()
+	DisableSpeedLoop()
 	gui:Destroy()
 end)
