@@ -302,7 +302,7 @@ BtnStroke2.Thickness = 3
 BtnStroke2.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 ApplyRGBEffect(BtnStroke2, 1.2)
 
--- 3. ปุ่มเปิด/ปิด อมตะ (God Mode Toggle)
+-- 3. ปุ่มเปิด/ปิด อมตะ (ForceField God Mode Toggle)
 local GodBtn = Instance.new("TextButton")
 GodBtn.Name = "GodModeBtn"
 GodBtn.Parent = Content
@@ -413,15 +413,28 @@ SpeedBtn.MouseButton1Click:Connect(function()
 	end
 end)
 
--- [[ ระบบเปิด/ปิด อมตะ (God Mode) ]]
+-- [[ ระบบเปิด/ปิด บาเรียอมตะถาวร (ForceField Loop) ]]
 local isGodEnabled = false
 local godConnection = nil
 
 local function EnableGodLoop()
 	if godConnection then godConnection:Disconnect() end
+	
+	-- คอยตรวจจับทุกเฟรมว่า ForceField ยังอยู่ไหม ถ้าหายไปให้สร้างใหม่ทันที
 	godConnection = RunService.Stepped:Connect(function()
 		if isGodEnabled and player.Character then
-			local humanoid = player.Character:FindFirstChild("Humanoid")
+			local char = player.Character
+			local ff = char:FindFirstChildOfClass("ForceField")
+			
+			if not ff then
+				local newFF = Instance.new("ForceField")
+				newFF.Name = "PermanentGodShield"
+				newFF.Visible = true
+				newFF.Parent = char
+			end
+			
+			-- ล็อกเลือดให้อยู่ที่ค่า Max เผื่อกรณีเกมใช้วิธีดาเมจผ่าน ForceField
+			local humanoid = char:FindFirstChildOfClass("Humanoid")
 			if humanoid then
 				humanoid.Health = humanoid.MaxHealth
 			end
@@ -433,6 +446,12 @@ local function DisableGodLoop()
 	if godConnection then
 		godConnection:Disconnect()
 		godConnection = nil
+	end
+	if player.Character then
+		local ff = player.Character:FindFirstChildOfClass("ForceField")
+		if ff then
+			ff:Destroy()
+		end
 	end
 end
 
@@ -451,8 +470,8 @@ GodBtn.MouseButton1Click:Connect(function()
 	end
 end)
 
--- เมื่อตัวละครเกิดใหม่ ให้คงสถานะเดิมไว้
-player.CharacterAdded:Connect(function()
+-- เมื่อตัวละครเกิดใหม่ (ตายแล้วเกิดใหม่ / เข้าแมพ) ให้รันระบบเดิมต่ออัตโนมัติ
+player.CharacterAdded:Connect(function(character)
 	task.wait(0.5)
 	if isSpeedEnabled then
 		EnableSpeedLoop()
