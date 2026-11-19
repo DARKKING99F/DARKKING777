@@ -1,648 +1,1277 @@
-local Players = game:GetService("Players")
-local TweenService = game:GetService("TweenService")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local RunService = game:GetService("RunService")
-local SoundService = game:GetService("SoundService")
-local Stats = game:GetService("Stats")
+local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
+local SaveManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/SaveManager.lua"))()
+local InterfaceManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/InterfaceManager.lua"))()
+
+local Players, RunService, UIS = game:GetService("Players"), game:GetService("RunService"), game:GetService("UserInputService")
 local Lighting = game:GetService("Lighting")
+local LP, C = Players.LocalPlayer, Color3.fromRGB
 
-local player = Players.LocalPlayer
-local playerGui = player:WaitForChild("PlayerGui")
-
--- ลบ UI เก่าถ้ามีอยู่ก่อนแล้ว
-if playerGui:FindFirstChild("DARKKING_UI") then
-	playerGui.DARKKING_UI:Destroy()
+local function New(class, props, parent)
+    local o = Instance.new(class)
+    for k, v in next, props do o[k] = v end
+    o.Parent = parent
+    return o
 end
 
-local gui = Instance.new("ScreenGui")
-gui.Name = "DARKKING_UI"
-gui.ResetOnSpawn = false
-gui.Parent = playerGui
-
--- [[ ฟังก์ชันสำหรับเล่นเสียง Click ]]
-local function PlayClickSound(soundId)
-	task.spawn(function()
-		local sound = Instance.new("Sound")
-		sound.SoundId = soundId or "rbxassetid://6895079853"
-		sound.Volume = 0.5
-		sound.Parent = SoundService
-		sound:Play()
-		sound.Ended:Connect(function()
-			sound:Destroy()
-		end)
-	end)
+-- ตัวแบ่งเฟรม: ทำงานหนักได้ไม่เกิน ~4ms ต่อเฟรม แล้วพักให้เกมวาดภาพ (กันค้างตอนสแกน)
+local function Slicer(budget)
+    budget = budget or 0.004
+    local t = os.clock()
+    return function()
+        if os.clock() - t > budget then
+            task.wait()
+            t = os.clock()
+        end
+    end
 end
 
--- [[ ฟังก์ชันสำหรับสร้างเอฟเฟกต์ไฟ RGB ]]
-local function ApplyRGBEffect(object, speed)
-	speed = speed or 1
-	local connection
-	connection = RunService.RenderStepped:Connect(function()
-		if not object or not object.Parent then
-			connection:Disconnect()
-			return
-		end
-		
-		local hue = (tick() * speed) % 1
-		local color = Color3.fromHSV(hue, 0.8, 1)
+--==================================================
+-- LANGUAGE (default = English / จำภาษาที่เลือกไว้ในไฟล์ DarkHub/lang.txt)
+--==================================================
+local LANG_FILE, LANG_NAMES = "DarkHub/lang.txt", { "English", "ไทย" }
+local Lang = "en"
 
-		if object:IsA("GuiObject") then
-			if object:IsA("TextLabel") or object:IsA("TextButton") then
-				object.TextColor3 = color
-			end
-			object.BorderColor3 = color
-		elseif object:IsA("UIStroke") then
-			object.Color = color
-		end
-	end)
-end
-
--- ==========================================
--- [[ 1. แสดงผล FPS / Ping แบบไม่มีกรอบ ]]
--- ==========================================
-local PerfText = Instance.new("TextLabel")
-PerfText.Name = "PerfText"
-PerfText.Parent = gui
-PerfText.Size = UDim2.new(0, 200, 0, 50)
-PerfText.Position = UDim2.new(0, 15, 0, 15)
-PerfText.BackgroundTransparency = 1
-PerfText.Font = Enum.Font.GothamBold
-PerfText.TextColor3 = Color3.fromRGB(0, 255, 100)
-PerfText.TextSize = 14
-PerfText.TextXAlignment = Enum.TextXAlignment.Left
-PerfText.TextYAlignment = Enum.TextYAlignment.Top
-PerfText.Visible = false
-PerfText.Text = "FPS: -- | Ping: -- ms"
-
-local TextStroke = Instance.new("UIStroke", PerfText)
-TextStroke.Thickness = 1.5
-TextStroke.Color = Color3.fromRGB(0, 0, 0)
-
-local frameCount = 0
-local lastFpsUpdate = tick()
-local currentFps = 0
-
-RunService.RenderStepped:Connect(function()
-	frameCount = frameCount + 1
-	local now = tick()
-	
-	if now - lastFpsUpdate >= 1 then
-		currentFps = math.floor(frameCount / (now - lastFpsUpdate))
-		frameCount = 0
-		lastFpsUpdate = now
-	end
-	
-	if PerfText.Visible then
-		local ping = math.floor(Stats.Network.ServerStatsItem["Data Ping"]:GetValue())
-		PerfText.Text = string.format("FPS: %d  |  Ping: %d ms", currentFps, ping)
-	end
+pcall(function()
+    if isfile and isfile(LANG_FILE) then
+        local v = readfile(LANG_FILE):match("%a+")
+        if v == "th" or v == "en" then Lang = v end
+    end
 end)
 
--- ==========================================
--- [[ 2. สร้างหน้าหลัก ( Main UI Responsive ) ]]
--- ==========================================
-local Main = Instance.new("Frame")
-Main.Name = "MainFrame"
-Main.Parent = gui
-Main.Size = UDim2.new(0.55, 0, 0.55, 0)
-Main.Position = UDim2.new(0.5, 0, 0.5, 0)
-Main.AnchorPoint = Vector2.new(0.5, 0.5)
-Main.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
-Main.BorderSizePixel = 0
-Main.Active = true
-Main.Draggable = true
-
-local MainSizeConstraint = Instance.new("UISizeConstraint", Main)
-MainSizeConstraint.MinSize = Vector2.new(380, 260)
-MainSizeConstraint.MaxSize = Vector2.new(650, 400)
-
-local MainAspect = Instance.new("UIAspectRatioConstraint", Main)
-MainAspect.AspectRatio = 1.625
-
-local MainCorner = Instance.new("UICorner", Main)
-MainCorner.CornerRadius = UDim.new(0.04, 0)
-
-local MainStroke = Instance.new("UIStroke", Main)
-MainStroke.Thickness = 3
-MainStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-ApplyRGBEffect(MainStroke, 0.8)
-
--- [[ ปุ่มเปิด/ปิด เมนูหลัก ]]
-local OpenButton = Instance.new("TextButton")
-OpenButton.Name = "OpenButton"
-OpenButton.Parent = gui
-OpenButton.Size = UDim2.new(0.08, 0, 0.08, 0)
-OpenButton.Position = UDim2.new(0.03, 0, 0.5, 0)
-OpenButton.AnchorPoint = Vector2.new(0, 0.5)
-OpenButton.Text = "☰"
-OpenButton.TextScaled = true
-OpenButton.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-OpenButton.TextColor3 = Color3.new(1, 1, 1)
-OpenButton.Visible = true
-OpenButton.Active = true
-OpenButton.Draggable = true
-OpenButton.BorderSizePixel = 0
-
-local OpenAspect = Instance.new("UIAspectRatioConstraint", OpenButton)
-OpenAspect.AspectRatio = 1
-
-local OpenSizeConstraint = Instance.new("UISizeConstraint", OpenButton)
-OpenSizeConstraint.MinSize = Vector2.new(45, 45)
-OpenSizeConstraint.MaxSize = Vector2.new(65, 65)
-
-local OpenCorner = Instance.new("UICorner", OpenButton)
-OpenCorner.CornerRadius = UDim.new(1, 0)
-
-local OpenStroke = Instance.new("UIStroke", OpenButton)
-OpenStroke.Thickness = 3
-OpenStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-ApplyRGBEffect(OpenStroke, 1.5)
-
--- [[ แถบบน ( Title Bar ) ]]
-local Top = Instance.new("Frame")
-Top.Name = "TitleBar"
-Top.Parent = Main
-Top.Size = UDim2.new(1, 0, 0.125, 0)
-Top.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-Top.BorderSizePixel = 0
-
-local TopCorner = Instance.new("UICorner", Top)
-TopCorner.CornerRadius = UDim.new(0.3, 0)
-
-local TopMask = Instance.new("Frame", Top)
-TopMask.Size = UDim2.new(1, 0, 0.5, 0)
-TopMask.Position = UDim2.new(0, 0, 0.5, 0)
-TopMask.BackgroundColor3 = Top.BackgroundColor3
-TopMask.BorderSizePixel = 0
-
-local Title = Instance.new("TextLabel")
-Title.Name = "HubTitle"
-Title.Parent = Top
-Title.Size = UDim2.new(0.6, 0, 0.8, 0)
-Title.Position = UDim2.new(0.03, 0, 0.1, 0)
-Title.BackgroundTransparency = 1
-Title.Text = "DARKKING HUB"
-Title.TextColor3 = Color3.new(1, 1, 1)
-Title.Font = Enum.Font.GothamBold
-Title.TextScaled = true
-Title.TextXAlignment = Enum.TextXAlignment.Left
-
-ApplyRGBEffect(Title, 0.8)
-
--- ปุ่มย่อหน้าต่าง
-local Min = Instance.new("TextButton")
-Min.Name = "MinimizeButton"
-Min.Parent = Top
-Min.Size = UDim2.new(0.08, 0, 0.6, 0)
-Min.Position = UDim2.new(0.81, 0, 0.2, 0)
-Min.Text = "-"
-Min.Font = Enum.Font.GothamBold
-Min.TextScaled = true
-Min.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-Min.TextColor3 = Color3.new(1, 1, 1)
-Min.BorderSizePixel = 0
-Instance.new("UICorner", Min).CornerRadius = UDim.new(0.2, 0)
-
--- ปุ่มปิด
-local Close = Instance.new("TextButton")
-Close.Name = "CloseButton"
-Close.Parent = Top
-Close.Size = UDim2.new(0.08, 0, 0.6, 0)
-Close.Position = UDim2.new(0.90, 0, 0.2, 0)
-Close.Text = "X"
-Close.Font = Enum.Font.GothamBold
-Close.TextScaled = true
-Close.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
-Close.TextColor3 = Color3.new(1, 1, 1)
-Close.BorderSizePixel = 0
-Instance.new("UICorner", Close).CornerRadius = UDim.new(0.2, 0)
-
--- [[ เมนูด้านซ้าย ( Sidebar ) ]]
-local Side = Instance.new("Frame")
-Side.Name = "Sidebar"
-Side.Parent = Main
-Side.Position = UDim2.new(0, 0, 0.125, 0)
-Side.Size = UDim2.new(0.3, 0, 0.875, 0)
-Side.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-Side.BorderSizePixel = 0
-
-local SideCorner = Instance.new("UICorner", Side)
-SideCorner.CornerRadius = UDim.new(0.05, 0)
-
-local Layout = Instance.new("UIListLayout", Side)
-Layout.Padding = UDim.new(0.03, 0)
-Layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-Layout.VerticalAlignment = Enum.VerticalAlignment.Top
-
-local SidePadding = Instance.new("UIPadding", Side)
-SidePadding.PaddingTop = UDim.new(0.05, 0)
-
-local function CreateTab(name)
-	local b = Instance.new("TextButton")
-	b.Size = UDim2.new(0.9, 0, 0.18, 0)
-	b.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-	b.Text = name
-	b.TextColor3 = Color3.new(0.8, 0.8, 0.8)
-	b.Font = Enum.Font.GothamSemibold
-	b.TextScaled = true
-	b.BorderSizePixel = 0
-	b.AutoButtonColor = false
-	Instance.new("UICorner", b).CornerRadius = UDim.new(0.2, 0)
-	b.Parent = Side
-
-	local bStroke = Instance.new("UIStroke", b)
-	bStroke.Thickness = 2
-	bStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-	bStroke.Transparency = 1
-	
-	ApplyRGBEffect(bStroke, 1)
-
-	b.MouseEnter:Connect(function()
-		TweenService:Create(b, TweenInfo.new(0.2), {
-			BackgroundColor3 = Color3.fromRGB(50, 50, 50),
-			TextColor3 = Color3.new(1, 1, 1)
-		}):Play()
-		TweenService:Create(bStroke, TweenInfo.new(0.2), {
-			Transparency = 0
-		}):Play()
-	end)
-
-	b.MouseLeave:Connect(function()
-		TweenService:Create(b, TweenInfo.new(0.2), {
-			BackgroundColor3 = Color3.fromRGB(30, 30, 30),
-			TextColor3 = Color3.new(0.8, 0.8, 0.8)
-		}):Play()
-		TweenService:Create(bStroke, TweenInfo.new(0.2), {
-			Transparency = 1
-		}):Play()
-	end)
-
-	return b
+local function SaveLang()
+    pcall(function()
+        if not writefile then return end
+        if makefolder and isfolder and not isfolder("DarkHub") then makefolder("DarkHub") end
+        writefile(LANG_FILE, Lang)
+    end)
 end
 
--- แก้ไขปุ่ม Home เหลือเฉพาะไอคอน 🏠 (ลบคำว่า "บ้าน" ออกแล้ว)
-local Home = CreateTab("🏠")
-local MainTab = CreateTab("⭐ เมนูหลัก")
-local Settings = CreateTab("⚙ ตั้งค่า")
-local Credits = CreateTab("📜 Credits")
+local STR = {
+    en = {
+        tab_tp = "Teleport", tab_esp = "ESP", tab_main = "Main", tab_settings = "Settings",
 
--- [[ พื้นที่แสดงผลเนื้อหา ( Content Area ) ]]
-local Content = Instance.new("Frame")
-Content.Name = "ContentArea"
-Content.Parent = Main
-Content.Position = UDim2.new(0.3, 0, 0.125, 0)
-Content.Size = UDim2.new(0.7, 0, 0.875, 0)
-Content.BackgroundTransparency = 1
+        sec_tp = "TELEPORT",
+        tp_sel_t = "Select Player", tp_sel_d = "Choose a player to teleport to",
+        tp_go_t = "Teleport to Player", tp_go_d = "Teleport above the selected player's head",
+        tp_rst_t = "Reset Player List", tp_rst_d = "Refresh the player list (press when someone joins or leaves)",
 
-local Label = Instance.new("TextLabel")
-Label.Name = "ContentTitle"
-Label.Parent = Content
-Label.Size = UDim2.new(0.9, 0, 0.15, 0)
-Label.Position = UDim2.new(0.05, 0, 0.05, 0)
-Label.BackgroundTransparency = 1
-Label.Text = "DARKKING HUB!"
-Label.TextColor3 = Color3.new(1, 1, 1)
-Label.Font = Enum.Font.GothamBold
-Label.TextScaled = true
-Label.TextXAlignment = Enum.TextXAlignment.Center
+        sec_spec = "SPECTATE",
+        spec_pick_t = "Spectate Player", spec_pick_d = "Choose a player to watch",
+        spec_t = "Spectate", spec_d = "Third-person view of the selected player (your character stays still)",
 
--- [[ ระบบแสดงเวลาเล่นในหน้า Home ]]
-local TimeLabel = Instance.new("TextLabel")
-TimeLabel.Name = "PlayTimeLabel"
-TimeLabel.Parent = Content
-TimeLabel.Position = UDim2.new(0.5, 0, 0.35, 0)
-TimeLabel.AnchorPoint = Vector2.new(0.5, 0)
-TimeLabel.Size = UDim2.new(0.85, 0, 0.18, 0)
-TimeLabel.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-TimeLabel.TextColor3 = Color3.fromRGB(0, 255, 200)
-TimeLabel.Font = Enum.Font.GothamBold
-TimeLabel.TextScaled = true
-TimeLabel.Text = "⏱ เวลาที่รันสคริปต์: 00:00:00"
-TimeLabel.Visible = true
-Instance.new("UICorner", TimeLabel).CornerRadius = UDim.new(0.2, 0)
+        sec_fol = "FOLLOW",
+        fol_pick_t = "Follow Player", fol_pick_d = "Choose a player to stick to",
+        fol_t = "Follow", fol_d = "Stick to the selected player's back and go wherever they go",
+        fol_dist_t = "Follow Distance", fol_dist_d = "Distance behind the target (1 = touching, higher = further away)",
+        fol_h_t = "Follow Height", fol_h_d = "Height relative to the target (negative = lower)",
+        trk_stop_t = "Stop All Tracking", trk_stop_d = "Stop Spectate and Follow and return to normal control",
+        no_players = "(No other players)",
 
-local TimeStroke = Instance.new("UIStroke", TimeLabel)
-TimeStroke.Thickness = 2
-TimeStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-ApplyRGBEffect(TimeStroke, 1)
+        sec_Player = "PLAYER", sec_Item = "ITEM",
+        esp_Player_t = "Player ESP", esp_Player_d = "Highlight other players through walls",
+        info_Player_t = "Show Player Info", info_Player_d = "Show [Player] name / distance / health above the player",
+        col_Player_t = "Player ESP Color", col_Player_d = "Choose the outline and text color for players",
+        esp_Item_t = "Item ESP", esp_Item_d = "Highlight items lying on the map and interactable pickups",
+        info_Item_t = "Show Item Info", info_Item_d = "Show [Item] name / distance above the item",
+        col_Item_t = "Item ESP Color", col_Item_d = "Choose the outline and text color for items",
 
--- ตัวนับเวลาอัตโนมัติ
-local startTime = tick()
+        sec_fly = "FLY",
+        fly_t = "Fly", fly_d = "Fly in the camera direction; use the movement keys to steer",
+        flyspd_t = "Fly Speed", lvl16_d = "x1 = 16  ->  x100 = 1600",
+        sec_move = "MOVEMENT",
+        walk_t = "Walk Speed", walk_d = "Enable to use the walk speed set below", walklv_t = "Walk Level",
+        jump_t = "Jump Power", jump_d = "Enable to use the jump power set below", jumplv_t = "Jump Level",
+        lvl50_d = "x1 = 50  ->  x100 = 5000",
+        sec_vis = "VISUAL",
+        bright_t = "Full Bright", bright_d = "Toggle bright mode (only you can see it)",
+        light_t = "Light Level", light_d = "Brightness 1 (dark) -> 10 (brightest)",
+        fog_t = "No Fog", fog_d = "Remove in-game fog (only you can see it)",
+        boost_t = "FPS Boost", boost_d = "Remove effects/textures/shadows for a plainer picture and less lag (only you)",
+
+        sec_lang = "LANGUAGE", lang_t = "Language", lang_d = "Choose the menu language",
+        sec_iface = "INTERFACE", theme_t = "Theme", theme_d = "Change the menu theme",
+        menukey_t = "Minimize Bind",
+
+        -- notifications (n_ = not part of the static UI)
+        nt_trk = "Tracking",
+        n_loaded = "Loaded successfully",
+        n_boost_done = "Detail reduction complete",
+        n_tp_list = "List refreshed: %d player(s)",
+        n_tp_missing = "Selected player not found (they may have left)",
+        n_tp_notready = "Character not ready, try again",
+        n_spec_none = "No players to spectate", n_spec_on = "Spectating: %s",
+        n_spec_left = "The player you were spectating left the server",
+        n_fol_none = "No players to follow", n_fol_on = "Following: %s",
+        n_fol_left = "The player you were following left the server",
+        n_trk_stopped = "All tracking stopped",
+        n_lang = "Language: English",
+        n_lang_restart = "Language saved. Re-run the script to apply it fully",
+    },
+    th = {
+        tab_tp = "วาร์ป", tab_esp = "ESP", tab_main = "หลัก", tab_settings = "ตั้งค่า",
+
+        sec_tp = "วาร์ป (TELEPORT)",
+        tp_sel_t = "เลือกผู้เล่น", tp_sel_d = "เลือกผู้เล่นที่จะวาร์ปไปหา",
+        tp_go_t = "วาร์ปไปหาผู้เล่น", tp_go_d = "วาร์ปไปอยู่บนหัวผู้เล่นที่เลือก",
+        tp_rst_t = "รีเซ็ตรายชื่อผู้เล่น", tp_rst_d = "รีเฟรชรายชื่อ (กดเมื่อมีคนเข้า/ออกเซิร์ฟ)",
+
+        sec_spec = "ดูมุมมอง (SPECTATE)",
+        spec_pick_t = "ผู้เล่นที่ต้องการดู", spec_pick_d = "เลือกผู้เล่นที่จะดูมุมมอง",
+        spec_t = "ดูมุมมองผู้เล่น", spec_d = "ดูมุมมองบุคคลที่ 3 ของผู้เล่นที่เลือก (ตัวเราไม่ขยับ)",
+
+        sec_fol = "เกาะหลัง (FOLLOW)",
+        fol_pick_t = "ผู้เล่นที่ต้องการตาม", fol_pick_d = "เลือกผู้เล่นที่จะเกาะหลัง",
+        fol_t = "เกาะหลัง", fol_d = "ตัวเราเกาะหลังผู้เล่นที่เลือก เขาไปไหนเราไปด้วย",
+        fol_dist_t = "ระยะห่าง", fol_dist_d = "ระยะด้านหลังเป้าหมาย (1 = ติดตัว, เพิ่มเพื่อลอยห่างออก)",
+        fol_h_t = "ความสูง", fol_h_d = "ความสูงเทียบกับเป้าหมาย (ลบ = ต่ำกว่า)",
+        trk_stop_t = "หยุดติดตามทั้งหมด", trk_stop_d = "หยุด Spectate และ Follow แล้วกลับมาควบคุมตัวเองปกติ",
+        no_players = "(ไม่มีผู้เล่นอื่น)",
+
+        sec_Player = "ผู้เล่น (PLAYER)", sec_Item = "ไอเท็ม (ITEM)",
+        esp_Player_t = "ESP ผู้เล่น", esp_Player_d = "ไฮไลต์ผู้เล่นคนอื่น มองเห็นทะลุกำแพง",
+        info_Player_t = "แสดงข้อมูลผู้เล่น", info_Player_d = "แสดงป้าย [Player] ชื่อ / ระยะ / เลือด เหนือหัวผู้เล่น",
+        col_Player_t = "สี ESP ผู้เล่น", col_Player_d = "เลือกสีกรอบและตัวอักษรของผู้เล่น",
+        esp_Item_t = "ESP ไอเท็ม", esp_Item_d = "ไฮไลต์ไอเท็มที่วางอยู่ในแมพ และของที่กดเก็บ/โต้ตอบได้",
+        info_Item_t = "แสดงข้อมูลไอเท็ม", info_Item_d = "แสดงป้าย [Item] ชื่อ / ระยะ เหนือไอเท็ม",
+        col_Item_t = "สี ESP ไอเท็ม", col_Item_d = "เลือกสีกรอบและตัวอักษรของไอเท็ม",
+
+        sec_fly = "บิน (FLY)",
+        fly_t = "บิน", fly_d = "บินตามทิศกล้อง ใช้ปุ่มเดินเพื่อควบคุมทิศทาง",
+        flyspd_t = "ความเร็วบิน", lvl16_d = "x1 = 16  ->  x100 = 1600",
+        sec_move = "การเคลื่อนไหว (MOVEMENT)",
+        walk_t = "ความเร็วเดิน", walk_d = "เปิดเพื่อใช้ความเร็วเดินที่ตั้งไว้", walklv_t = "ระดับความเร็วเดิน",
+        jump_t = "แรงกระโดด", jump_d = "เปิดเพื่อใช้แรงกระโดดที่ตั้งไว้", jumplv_t = "ระดับแรงกระโดด",
+        lvl50_d = "x1 = 50  ->  x100 = 5000",
+        sec_vis = "ภาพ (VISUAL)",
+        bright_t = "โหมดสว่าง", bright_d = "เปิด/ปิดโหมดสว่าง เห็นแค่เราคนเดียว",
+        light_t = "ระดับความสว่าง", light_d = "ระดับความสว่าง 1 (มืด) -> 10 (สว่างสุด)",
+        fog_t = "ลบหมอก", fog_d = "ลบหมอกในเกม (เห็นแค่เราคนเดียว)",
+        boost_t = "เพิ่ม FPS", boost_d = "ลบเอฟเฟกต์/เท็กซ์เจอร์/เงา ให้ภาพเรียบๆ ลดแลค (เห็นแค่เรา)",
+
+        sec_lang = "ภาษา (LANGUAGE)", lang_t = "ภาษา", lang_d = "เลือกภาษาของเมนู",
+        sec_iface = "หน้าตา (INTERFACE)", theme_t = "ธีม", theme_d = "เปลี่ยนธีมของเมนู",
+        menukey_t = "ปุ่มย่อ/เปิดเมนู",
+
+        nt_trk = "ติดตาม",
+        n_loaded = "โหลดเรียบร้อย",
+        n_boost_done = "ลดรายละเอียดเรียบร้อย",
+        n_tp_list = "รีเซ็ตรายชื่อแล้ว: %d คน",
+        n_tp_missing = "ไม่พบผู้เล่นที่เลือก (อาจออกจากเซิร์ฟแล้ว)",
+        n_tp_notready = "ตัวละครของเขาหรือของเรายังไม่พร้อม ลองใหม่อีกครั้ง",
+        n_spec_none = "ไม่มีผู้เล่นให้ดู", n_spec_on = "กำลังดู: %s",
+        n_spec_left = "ผู้เล่นที่ดูอยู่ออกจากเซิร์ฟแล้ว",
+        n_fol_none = "ไม่มีผู้เล่นให้ตาม", n_fol_on = "กำลังเกาะหลัง: %s",
+        n_fol_left = "ผู้เล่นที่ตามอยู่ออกจากเซิร์ฟแล้ว",
+        n_trk_stopped = "หยุดทั้งหมดแล้ว",
+        n_lang = "ภาษา: ไทย",
+        n_lang_restart = "บันทึกภาษาแล้ว รันสคริปต์ใหม่เพื่อให้มีผลทั้งหมด",
+    },
+}
+
+local function T(key, ...)
+    local s = (STR[Lang] and STR[Lang][key]) or STR.en[key] or key
+    if select("#", ...) > 0 then return string.format(s, ...) end
+    return s
+end
+
+-- ตารางย้อนกลับ ข้อความ -> key (ใช้ตอนสลับภาษาแบบสดโดยไม่ต้องสร้างเมนูใหม่)
+local REV = { en = {}, th = {} }
+for lang, tbl in next, STR do
+    for k, v in next, tbl do
+        if k:sub(1, 2) ~= "n_" then REV[lang][v] = k end
+    end
+end
+
+local LangHooks = {} -- ฟังก์ชันที่ต้องรันตอนเปลี่ยนภาษา (เช่น สร้างรายชื่อ dropdown ใหม่)
+
+local function Note(title, content, dur)
+    Fluent:Notify({ Title = title, Content = content, Duration = dur or 4 })
+end
+
+-- เหลือแค่ธีม Dark กับ Light ในรายการธีมของ Fluent
+for i = #Fluent.Themes, 1, -1 do
+    local n = Fluent.Themes[i]
+    if n ~= "Dark" and n ~= "Light" then table.remove(Fluent.Themes, i) end
+end
+
+--==================================================
+-- STATE
+--==================================================
+local Settings = { FlySpeed = 3, WalkOn = false, WalkLevel = 1, JumpOn = false, JumpLevel = 1, BrightOn = false, BrightLevel = 10, NoFog = false, Boost = false }
+local MAX_LEVEL, WALK_BASE, JUMP_BASE, FLY_BASE = 100, 16, 50, 16
+
+local Links = {}
+local function Track(conn) table.insert(Links, conn) return conn end
+
+local function GetHumanoid()
+    local char = LP.Character
+    return char and char:FindFirstChildOfClass("Humanoid")
+end
+
+--==================================================
+-- ESP (แยก 2 หมวด: ผู้เล่น / ไอเท็ม)
+--==================================================
+local Cats = {
+    Player = { on = false, info = true, color = C(255, 255, 255), tag = "Player" },
+    Item   = { on = false, info = true, color = C(255, 220, 60),   tag = "Item"   },
+}
+local Entries = {} -- [key] = { kind, hl, bb, label, adornee, hum, name, text }
+
+local function RemoveEntry(key)
+    local e = Entries[key]
+    if not e then return end
+    Entries[key] = nil
+    if e.hl then e.hl:Destroy() end
+    if e.bb then e.bb:Destroy() end
+end
+
+local function AddEntry(kind, key, hlTarget, adornee, hum, name)
+    local cat = Cats[kind]
+    if not cat.on or Entries[key] or not (key.Parent and adornee.Parent) then return end
+
+    local col = cat.color
+    local hl = New("Highlight", {
+        Name = "DarkHubHighlight", Adornee = hlTarget, FillColor = col, OutlineColor = col,
+        FillTransparency = 0.8, DepthMode = Enum.HighlightDepthMode.AlwaysOnTop,
+    }, hlTarget)
+    local bb = New("BillboardGui", {
+        Name = "DarkHubInfo", Adornee = adornee, Size = UDim2.fromOffset(190, 60),
+        StudsOffset = Vector3.new(0, 2.5, 0), AlwaysOnTop = true, Enabled = cat.info,
+    }, adornee)
+    local label = New("TextLabel", {
+        Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Font = Enum.Font.GothamBold,
+        TextSize = 12, TextColor3 = col, TextStrokeTransparency = 0.25,
+    }, bb)
+
+    Entries[key] = { kind = kind, hl = hl, bb = bb, label = label, adornee = adornee, hum = hum, name = name, text = "" }
+end
+
+-- ESP ผู้เล่นเท่านั้น: ไม่ตรวจจับ Humanoid ที่ไม่ใช่ผู้เล่น
+local function AddHumanoid(hum)
+    local model = hum.Parent
+    if not (model and model:IsA("Model")) then return end
+
+    local plr = Players:GetPlayerFromCharacter(model)
+    if not plr or plr == LP or not Cats.Player.on then return end
+
+    local root = hum.RootPart or model:FindFirstChild("HumanoidRootPart")
+    root = root or model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart")
+    if not root then return end
+
+    local head = model:FindFirstChild("Head")
+    AddEntry("Player", model, model,
+        (head and head:IsA("BasePart")) and head or root,
+        hum, plr.DisplayName)
+end
+
+-- ไอเท็ม: Tool ที่วางอยู่ในแมพ
+local function AddTool(tool)
+    if not Cats.Item.on then return end
+    if tool.Parent and tool.Parent:FindFirstChildOfClass("Humanoid") then return end
+    local part = tool:FindFirstChild("Handle") or tool:FindFirstChildWhichIsA("BasePart", true)
+    if part and part:IsA("BasePart") then AddEntry("Item", tool, part, part, nil, tool.Name) end
+end
+
+-- ไอเท็ม: ของที่กดเก็บ/โต้ตอบได้ (ProximityPrompt)
+local function AddPrompt(prompt)
+    if not Cats.Item.on then return end
+    local part = prompt.Parent
+    if part and part:IsA("Attachment") then part = part.Parent end
+    if not (part and part:IsA("BasePart")) then return end
+
+    local model = part:FindFirstAncestorOfClass("Model")
+    if model and model:FindFirstChildOfClass("Humanoid") then return end -- ของติดตัว NPC/ผู้เล่น ข้าม
+
+    local target = part
+    if model and model:GetExtentsSize().Magnitude <= 40 then target = model end -- โมเดลเล็ก = ไฮไลต์ทั้งชิ้น
+    local name = prompt.ObjectText ~= "" and prompt.ObjectText or (target ~= part and target.Name) or part.Name
+    AddEntry("Item", target, target, part, nil, name)
+end
+
+local function Consider(inst)
+    if inst:IsA("Humanoid") then
+        if Cats.Player.on then AddHumanoid(inst) end
+    elseif Cats.Item.on then
+        if inst:IsA("Tool") then AddTool(inst)
+        elseif inst:IsA("ProximityPrompt") then AddPrompt(inst) end
+    end
+end
+
+local scanGen = 0
+local scanning = false
+local scanPending = false
+
+local function Rescan()
+    scanGen += 1
+
+    -- ถ้ามีการกดเปิดอีกหมวดระหว่างสแกน ให้สแกนรอบใหม่ต่อหลังรอบปัจจุบันหยุด
+    if scanning then
+        scanPending = true
+        return
+    end
+
+    scanning = true
+    task.spawn(function()
+        repeat
+            scanPending = false
+            local gen = scanGen
+            local slice = Slicer()
+
+            local ok, descendants = pcall(function() return workspace:GetDescendants() end)
+            if ok and type(descendants) == "table" then
+                for _, inst in ipairs(descendants) do
+                    if gen ~= scanGen then break end
+                    pcall(Consider, inst)
+                    slice()
+                end
+            end
+        until not scanPending and scanGen == gen
+
+        scanning = false
+    end)
+end
+
+local function SetCat(kind, on)
+    Cats[kind].on = on
+    if on then
+        if kind == "Player" then
+            -- ตรวจเฉพาะรายชื่อผู้เล่นจริง ไม่ไล่สแกน Workspace ทั้งหมด
+            for _, player in ipairs(Players:GetPlayers()) do
+                if player ~= LP and player.Character then
+                    local hum = player.Character:FindFirstChildOfClass("Humanoid")
+                    if hum then AddHumanoid(hum) end
+                end
+            end
+        else
+            Rescan()
+        end
+    else
+        for key, e in next, Entries do
+            if e.kind == kind then RemoveEntry(key) end
+        end
+    end
+end
+
+local function ClearESP()
+    scanGen += 1
+    for _, cat in next, Cats do cat.on = false end
+    for key in next, Entries do RemoveEntry(key) end
+end
+
+-- ถ้าไม่มี ESP หมวดไหนเปิดอยู่ ไม่ต้องเสียเวลาเช็กของใหม่ที่เข้ามาในแมพเลย
+Track(workspace.DescendantAdded:Connect(function(inst)
+    if Cats.Player.on or Cats.Item.on then pcall(Consider, inst) end
+end))
+
+local lastESP = 0
+local function UpdateESP() -- อัปเดต ~5 ครั้ง/วินาที
+    local now = os.clock()
+    if now - lastESP < 0.2 then return end
+    lastESP = now
+    if next(Entries) == nil then return end
+
+    local cam = workspace.CurrentCamera
+    if not cam then return end
+    local camPos = cam.CFrame.Position
+
+    for key, e in next, Entries do
+        if not (key.Parent and e.adornee.Parent and key:IsDescendantOf(workspace)) then
+            RemoveEntry(key)
+        else
+            local cat = Cats[e.kind]
+            if e.hl.FillColor ~= cat.color then
+                e.hl.FillColor, e.hl.OutlineColor = cat.color, cat.color
+            end
+            if e.label.TextColor3 ~= cat.color then
+                e.label.TextColor3 = cat.color
+            end
+            if e.bb.Enabled ~= cat.info then
+                e.bb.Enabled = cat.info
+            end
+
+            if cat.info then
+                local text = string.format("[%s] %s\n%d studs", cat.tag, e.name,
+                    math.floor((camPos - e.adornee.Position).Magnitude))
+                if e.hum and e.hum.Parent then
+                    text ..= string.format(" | HP: %d/%d", math.floor(e.hum.Health), math.floor(e.hum.MaxHealth))
+                end
+                if text ~= e.text then -- เขียนเฉพาะตอนข้อความเปลี่ยนจริง
+                    e.text = text
+                    e.label.Text = text
+                end
+            end
+        end
+    end
+end
+
+--==================================================
+-- FLY (บินตามทิศกล้อง)
+--==================================================
+local Flying = false
+local flyBV, flyBG, flyConn
+
+local function StopFly()
+    Flying = false
+    if flyConn then flyConn:Disconnect() flyConn = nil end
+    if flyBV then flyBV:Destroy() flyBV = nil end
+    if flyBG then flyBG:Destroy() flyBG = nil end
+
+    local hum = GetHumanoid()
+    if hum then
+        hum.PlatformStand = false
+        hum:ChangeState(Enum.HumanoidStateType.GettingUp)
+    end
+end
+
+local function StartFly()
+    local hum = GetHumanoid()
+    local root = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
+    if not (hum and root) then return false end
+
+    Flying = true
+    hum.PlatformStand = true
+    flyBV = New("BodyVelocity", { MaxForce = Vector3.new(9e9, 9e9, 9e9), Velocity = Vector3.zero }, root)
+    flyBG = New("BodyGyro", { MaxTorque = Vector3.new(9e9, 9e9, 9e9), P = 9e4, CFrame = root.CFrame }, root)
+
+    flyConn = RunService.RenderStepped:Connect(function()
+        local cam = workspace.CurrentCamera
+        if not (Flying and cam and root.Parent) or hum.Health <= 0 then return end
+
+        local move = cam.CFrame:VectorToObjectSpace(hum.MoveDirection)
+        local dir = cam.CFrame.LookVector * -move.Z + cam.CFrame.RightVector * move.X
+
+        flyBV.Velocity = (dir.Magnitude > 0 and dir.Unit or dir) * (Settings.FlySpeed * FLY_BASE)
+        flyBG.CFrame = cam.CFrame
+    end)
+    return true
+end
+
+--==================================================
+-- WALK / JUMP (เขียนค่าเฉพาะตอนค่าไม่ตรง ไม่เขียนซ้ำทุกเฟรม)
+--==================================================
+local Orig = {}
+
+local function RestoreWalk()
+    local hum = GetHumanoid()
+    if hum and Orig.Walk then hum.WalkSpeed = Orig.Walk end
+    Orig.Walk = nil
+end
+
+local function RestoreJump()
+    local hum = GetHumanoid()
+    if hum and Orig.Jump then
+        hum[Orig.UsePower and "JumpPower" or "JumpHeight"] = Orig.Jump
+    end
+    Orig.Jump, Orig.UsePower = nil, nil
+end
+
+local function ApplyStats()
+    if not (Settings.WalkOn or Settings.JumpOn) then return end
+    local hum = GetHumanoid()
+    if not hum then return end
+
+    if Settings.WalkOn then
+        Orig.Walk = Orig.Walk or hum.WalkSpeed
+        local v = WALK_BASE * Settings.WalkLevel
+        if hum.WalkSpeed ~= v then hum.WalkSpeed = v end
+    end
+
+    if Settings.JumpOn then
+        local power = JUMP_BASE * Settings.JumpLevel
+        if Orig.Jump == nil then
+            Orig.UsePower = hum.UseJumpPower
+            Orig.Jump = hum.UseJumpPower and hum.JumpPower or hum.JumpHeight
+        end
+        if hum.UseJumpPower then
+            if hum.JumpPower ~= power then hum.JumpPower = power end
+        else
+            local h = power ^ 2 / (2 * workspace.Gravity)
+            if hum.JumpHeight ~= h then hum.JumpHeight = h end
+        end
+    end
+end
+
+Track(LP.CharacterAdded:Connect(function()
+    table.clear(Orig)
+    if Flying then
+        StopFly()
+        if Fluent.Options.FlyToggle then Fluent.Options.FlyToggle:SetValue(false) end
+    end
+end))
+
+--==================================================
+-- VISUAL (แก้ Lighting ฝั่งเรา เห็นแค่เราคนเดียว)
+--==================================================
+local Saved, SavedAtmo = {}, {}
+local BrightProps = { "Brightness", "Ambient", "OutdoorAmbient", "ClockTime", "GlobalShadows", "ExposureCompensation" }
+local FogProps = { "FogEnd" }
+local BoostProps = { "GlobalShadows", "EnvironmentDiffuseScale", "EnvironmentSpecularScale" }
+
+local function Save(props)
+    for _, p in ipairs(props) do
+        if Saved[p] == nil then Saved[p] = Lighting[p] end
+    end
+end
+
+local function Restore(props)
+    for _, p in ipairs(props) do
+        if Saved[p] ~= nil then
+            Lighting[p] = Saved[p]
+            Saved[p] = nil
+        end
+    end
+end
+
+local function RestoreFog()
+    Restore(FogProps)
+    for atm, v in next, SavedAtmo do
+        if atm.Parent then atm.Density, atm.Haze = v[1], v[2] end
+        SavedAtmo[atm] = nil
+    end
+end
+
+local function SetL(prop, val) -- เขียน Lighting เฉพาะตอนค่าเปลี่ยนจริง
+    if Lighting[prop] ~= val then Lighting[prop] = val end
+end
+
+local function ApplyVisuals()
+    if Settings.BrightOn then
+        Save(BrightProps)
+        local t = Settings.BrightLevel / 10              -- 0.1 -> 1.0
+        SetL("Brightness", 1 + t * 3)                    -- 1.3 -> 4
+        SetL("Ambient", Color3.new(t, t, t))
+        SetL("OutdoorAmbient", Color3.new(t, t, t))
+        SetL("ExposureCompensation", (t - 0.5) * 2)      -- -0.8 -> +1
+        SetL("ClockTime", 14)
+        SetL("GlobalShadows", false)
+    end
+
+    if Settings.NoFog then
+        Save(FogProps)
+        SetL("FogEnd", 1e6)
+        local atm = Lighting:FindFirstChildOfClass("Atmosphere")
+        if atm then
+            SavedAtmo[atm] = SavedAtmo[atm] or { atm.Density, atm.Haze }
+            if atm.Density ~= 0 then atm.Density = 0 end
+            if atm.Haze ~= 0 then atm.Haze = 0 end
+        end
+    end
+
+    if Settings.Boost then
+        Save(BoostProps)
+        SetL("GlobalShadows", false)
+        SetL("EnvironmentDiffuseScale", 0)
+        SetL("EnvironmentSpecularScale", 0)
+    end
+end
+
+--------------------------------------------------
+-- FPS BOOST: ลบเอฟเฟกต์ / เท็กซ์เจอร์ / รายละเอียดที่ทำให้แลค (เก็บค่าเดิมไว้คืนตอนปิด)
+--------------------------------------------------
+local Boost = setmetatable({}, { __mode = "k" }) -- [instance] = { prop = ค่าเดิม }
+local BoostGen, BoostConn, OrigQuality = 0, {}, nil
+local MapProps = { "ColorMap", "NormalMap", "MetalnessMap", "RoughnessMap" }
+
+local function Mod(inst, prop, val)
+    if inst[prop] == val then return end -- ค่าตรงอยู่แล้ว ไม่ต้องเขียน/ไม่ต้องจดซ้ำ
+    local rec = Boost[inst]
+    if not rec then rec = {} Boost[inst] = rec end
+    if rec[prop] == nil then rec[prop] = inst[prop] end
+    inst[prop] = val
+end
+
+local function Put(inst, prop, val) inst[prop] = val end
+
+local function Reduce(inst)
+    if inst:IsA("PostEffect") or inst:IsA("ParticleEmitter") or inst:IsA("Trail") or inst:IsA("Beam")
+        or inst:IsA("Fire") or inst:IsA("Smoke") or inst:IsA("Sparkles") or inst:IsA("Clouds") then
+        Mod(inst, "Enabled", false)
+    elseif inst:IsA("Decal") then -- รวม Texture ด้วย (เว้นหน้าตัวละคร)
+        if inst.Name ~= "face" then Mod(inst, "Transparency", 1) end
+    elseif inst:IsA("SurfaceAppearance") then
+        for _, p in ipairs(MapProps) do pcall(Mod, inst, p, "") end
+    elseif inst:IsA("Terrain") then
+        pcall(Mod, inst, "Decoration", false) -- หญ้า
+        Mod(inst, "WaterWaveSize", 0)
+        Mod(inst, "WaterWaveSpeed", 0)
+        Mod(inst, "WaterReflectance", 0)
+    elseif inst:IsA("BasePart") then
+        Mod(inst, "Material", Enum.Material.SmoothPlastic)
+        Mod(inst, "Reflectance", 0)
+        Mod(inst, "CastShadow", false)
+        if inst:IsA("MeshPart") then
+            Mod(inst, "TextureID", "")
+            Mod(inst, "RenderFidelity", Enum.RenderFidelity.Performance)
+        end
+    end
+end
+
+local function SetBoost(on)
+    BoostGen += 1
+    local gen = BoostGen
+    for _, c in ipairs(BoostConn) do c:Disconnect() end
+    table.clear(BoostConn)
+
+    if on then
+        pcall(function()
+            local r = settings().Rendering
+            OrigQuality = OrigQuality or r.QualityLevel
+            r.QualityLevel = Enum.QualityLevel.Level01
+        end)
+
+        local roots = { workspace, Lighting }
+        for _, root in ipairs(roots) do
+            table.insert(BoostConn, root.DescendantAdded:Connect(function(i) pcall(Reduce, i) end))
+        end
+
+        task.spawn(function() -- แบ่งเฟรมตามเวลา ไม่ให้เกมค้างตอนเปิด
+            local slice = Slicer()
+            for _, root in ipairs(roots) do
+                for _, inst in ipairs(root:GetDescendants()) do
+                    if gen ~= BoostGen then return end
+                    pcall(Reduce, inst)
+                    slice()
+                end
+            end
+            Note(T("boost_t"), T("n_boost_done"), 3)
+        end)
+    else
+        pcall(function()
+            if OrigQuality then settings().Rendering.QualityLevel = OrigQuality end
+            OrigQuality = nil
+        end)
+
+        task.spawn(function()
+            local slice = Slicer()
+            for inst, rec in next, Boost do
+                if gen ~= BoostGen then return end
+                for p, v in next, rec do pcall(Put, inst, p, v) end
+                Boost[inst] = nil
+                slice()
+            end
+        end)
+    end
+end
+
+--==================================================
+-- TRACKING (SPECTATE / FOLLOW) — แก้ใหม่ให้ไม่แลค
+--   Spectate: ใช้อีเวนต์ล้วน ไม่มีลูปทุกเฟรม
+--   Follow  : ตั้งตำแหน่งตอน RenderStepped (ตรงกับภาพที่เห็น) + ปิดชน/ล้างความเร็วตอน Stepped
+--             เก็บ reference ไว้ ไม่ FindFirstChild ซ้ำทุกเฟรม และไม่สร้าง CFrame ใหม่ทุกเฟรม
+--==================================================
+local function SetOpt(id, v)
+    local o = Fluent.Options[id]
+    if o and o.Value ~= v then o:SetValue(v) end
+end
+
+local Tracking = { Spec = nil, Follow = nil, Dist = 1, Height = 0.2 }
+local followOffset = CFrame.new(0, Tracking.Height, Tracking.Dist)
+local function UpdateOffset() followOffset = CFrame.new(0, Tracking.Height, Tracking.Dist) end
+
+-- ---------- Spectate ----------
+local specConns = {}
+
+local function SpecApply()
+    local target, cam = Tracking.Spec, workspace.CurrentCamera
+    if not (target and cam) then return end
+    local ch = target.Character
+    local hum = ch and ch:FindFirstChildOfClass("Humanoid")
+    if hum and cam.CameraSubject ~= hum then cam.CameraSubject = hum end
+end
+
+local function StopSpectate()
+    local was = Tracking.Spec ~= nil
+    Tracking.Spec = nil
+    for _, c in ipairs(specConns) do c:Disconnect() end
+    table.clear(specConns)
+    if not was then return end
+    local cam, hum = workspace.CurrentCamera, GetHumanoid()
+    if cam and hum then cam.CameraSubject = hum end
+end
+
+local function StartSpectate(plr)
+    for _, c in ipairs(specConns) do c:Disconnect() end
+    table.clear(specConns)
+    Tracking.Spec = plr
+
+    local function hookCam()
+        local cam = workspace.CurrentCamera
+        if cam then
+            -- เกมดึงกล้องกลับ -> ตั้งใหม่ทันที (ทำงานเฉพาะตอนมีการเปลี่ยนจริง)
+            table.insert(specConns, cam:GetPropertyChangedSignal("CameraSubject"):Connect(SpecApply))
+        end
+    end
+    hookCam()
+    table.insert(specConns, workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
+        hookCam()
+        SpecApply()
+    end))
+    -- เป้าหมายเกิดใหม่ -> ย้ายกล้องไปตัวใหม่
+    table.insert(specConns, plr.CharacterAdded:Connect(function(char)
+        task.spawn(function()
+            char:WaitForChild("Humanoid", 5)
+            if Tracking.Spec == plr then SpecApply() end
+        end)
+    end))
+    SpecApply()
+end
+
+-- ---------- Follow ----------
+local followConns = {}
+local fTRoot, fRoot, fHum              -- reference ที่แคชไว้
+local fParts, fChar = {}, nil          -- ชิ้นส่วนที่ต้องปิดการชน (เฉพาะชิ้นที่ชนอยู่จริง ~4 ชิ้น)
+
+local function CacheParts(char)
+    fChar, fParts = char, {}
+    for _, p in ipairs(char:GetDescendants()) do
+        if p:IsA("BasePart") and p.CanCollide then table.insert(fParts, p) end
+    end
+end
+
+local function RestoreCollide()
+    for _, p in ipairs(fParts) do
+        if p.Parent then p.CanCollide = true end
+    end
+    fParts, fChar = {}, nil
+end
+
+local function StopFollow()
+    local was = Tracking.Follow ~= nil or #followConns > 0
+    Tracking.Follow = nil
+    for _, c in ipairs(followConns) do c:Disconnect() end
+    table.clear(followConns)
+    fTRoot, fRoot, fHum = nil, nil, nil
+    if not was then return end -- ไม่ได้ตามอยู่ ก็ไม่ไปแตะตัวละคร (กันชนกับระบบบิน)
+    RestoreCollide()
+    local hum = GetHumanoid()
+    if hum then
+        hum.PlatformStand = false
+        hum:ChangeState(Enum.HumanoidStateType.GettingUp)
+    end
+end
+
+local function StartFollow(plr)
+    if Flying then -- ไม่ให้ชนกับระบบบิน
+        StopFly()
+        SetOpt("FlyToggle", false)
+    end
+    Tracking.Follow = plr
+    fTRoot = nil -- บังคับหา root ของเป้าหมายใหม่
+    if #followConns > 0 then return end -- ใช้ connection เดิม แค่เปลี่ยนเป้าหมาย
+
+    -- ก่อนฟิสิกส์: ปิดการชน + ล้างความเร็ว (Humanoid เปิดการชนกลับทุกสเต็ป)
+    table.insert(followConns, RunService.Stepped:Connect(function()
+        if not (fRoot and fRoot.Parent) then return end
+        for _, p in ipairs(fParts) do
+            if p.CanCollide then p.CanCollide = false end
+        end
+        fRoot.AssemblyLinearVelocity = Vector3.zero
+        fRoot.AssemblyAngularVelocity = Vector3.zero
+    end))
+
+    -- ก่อนวาดภาพ: วางตัวเราติดหลังเป้าหมายตามตำแหน่งที่เห็นอยู่ตอนนั้นพอดี
+    table.insert(followConns, RunService.RenderStepped:Connect(function()
+        local target = Tracking.Follow
+        if not target then return end
+
+        if not (fTRoot and fTRoot.Parent) then
+            local ch = target.Character
+            fTRoot = ch and ch:FindFirstChild("HumanoidRootPart")
+            if not fTRoot then return end -- รอเป้าหมายเกิดใหม่
+        end
+
+        local char = LP.Character
+        if not char then return end
+        if char ~= fChar or not (fRoot and fRoot.Parent) then
+            fRoot = char:FindFirstChild("HumanoidRootPart")
+            fHum = char:FindFirstChildOfClass("Humanoid")
+            if not fRoot then return end -- รอเราเกิดใหม่
+            CacheParts(char)
+        end
+
+        if fHum and not fHum.PlatformStand then fHum.PlatformStand = true end
+        fRoot.CFrame = fTRoot.CFrame * followOffset -- Z บวก = ด้านหลังเป้าหมาย (หันไปทางเดียวกับเขา)
+    end))
+end
+
+-- เป้าหมายออกจากเซิร์ฟ: ใช้อีเวนต์เดียว แทนการเช็กทุกเฟรม
+Track(Players.PlayerRemoving:Connect(function(p)
+    if p == Tracking.Spec then
+        StopSpectate()
+        SetOpt("SpecToggle", false)
+        Note(T("spec_t"), T("n_spec_left"))
+    end
+    if p == Tracking.Follow then
+        StopFollow()
+        SetOpt("FollowToggle", false)
+        Note(T("fol_t"), T("n_fol_left"))
+    end
+end))
+
+--==================================================
+-- CLEANUP + MAIN LOOP (ลดความถี่: stats 10 ครั้ง/วิ, visual 2 ครั้ง/วิ, ESP 5 ครั้ง/วิ)
+--==================================================
+local loop
+local accStats, accVis = 0, 0
+loop = RunService.Heartbeat:Connect(function(dt)
+    if not Fluent.Unloaded then
+        accStats += dt
+        if accStats >= 0.1 then accStats = 0 ApplyStats() end
+        accVis += dt
+        if accVis >= 0.5 then accVis = 0 ApplyVisuals() end
+        UpdateESP()
+        return
+    end
+
+    loop:Disconnect()
+    ClearESP()
+    StopFly()
+    StopSpectate()
+    StopFollow()
+    Settings.WalkOn, Settings.JumpOn, Settings.BrightOn, Settings.NoFog = false, false, false, false
+    RestoreWalk()
+    RestoreJump()
+    Restore(BrightProps)
+    RestoreFog()
+    Settings.Boost = false
+    SetBoost(false)
+    Restore(BoostProps)
+    for _, c in ipairs(Links) do c:Disconnect() end
+    table.clear(Links)
+end)
+
+--==================================================
+-- UI
+--==================================================
+local Window = Fluent:CreateWindow({
+    Title = "DARK HUB", SubTitle = "ESP  •  Tracking  •  Fly  •  Movement", TabWidth = 160,
+    Size = UDim2.fromOffset(580, 460), Acrylic = true, Theme = "Dark",
+    MinimizeKey = Enum.KeyCode.LeftControl,
+})
+
+local Tabs = {
+    Teleport = Window:AddTab({ Title = T("tab_tp"), Icon = "map-pin" }),
+    ESP = Window:AddTab({ Title = T("tab_esp"), Icon = "eye" }),
+    Main = Window:AddTab({ Title = T("tab_main"), Icon = "zap" }),
+    Settings = Window:AddTab({ Title = T("tab_settings"), Icon = "settings" }),
+}
+
+local function Level(v) return math.clamp(math.floor(v + 0.5), 1, MAX_LEVEL) end
+
+local function AddToggle(sec, id, title, desc, default, fn)
+    local t = sec:AddToggle(id, { Title = title, Description = desc, Default = default })
+    t:OnChanged(function() fn(t.Value) end)
+    return t
+end
+
+local function AddSlider(sec, id, title, desc, default, min, max, fn)
+    local s = sec:AddSlider(id, { Title = title, Description = desc, Default = default, Min = min, Max = max, Rounding = 0 })
+    s:OnChanged(fn)
+    return s
+end
+
+-- สลับภาษาแบบสด: ไล่แทนข้อความที่ตรงกับภาษาเดิมในหน้าต่าง Fluent (ไม่ต้องสร้างเมนูใหม่)
+local function SwapText(oldLang, newLang)
+    local ok, root = pcall(function() return Fluent.GUI or Window.Root end)
+    if not (ok and root) then return false end
+
+    local rev, to = REV[oldLang], STR[newLang]
+    task.spawn(function()
+        local slice = Slicer()
+        for _, inst in ipairs(root:GetDescendants()) do
+            if inst:IsA("TextLabel") or inst:IsA("TextButton") then
+                local k = rev[inst.Text]
+                if k and to[k] and inst.Text ~= to[k] then inst.Text = to[k] end
+            end
+            slice()
+        end
+    end)
+    return true
+end
+
+do -- TELEPORT
+    local sec = Tabs.Teleport:AddSection(T("sec_tp"))
+    local TPMap, TPDrop = {}, nil
+
+    local function BuildList()
+        table.clear(TPMap)
+        local labels = {}
+        for _, plr in ipairs(Players:GetPlayers()) do
+            if plr ~= LP then
+                local label = string.format("%s (@%s)", plr.DisplayName, plr.Name)
+                TPMap[label] = plr
+                table.insert(labels, label)
+            end
+        end
+        table.sort(labels)
+        return #labels > 0 and labels or { T("no_players") }
+    end
+
+    local function Refresh(silent)
+        local labels = BuildList()
+        TPDrop:SetValues(labels)
+        if not TPMap[TPDrop.Value] then TPDrop:SetValue(labels[1]) end
+        if not silent then
+            Note(T("tab_tp"), T("n_tp_list", math.max(#Players:GetPlayers() - 1, 0)), 3)
+        end
+    end
+    table.insert(LangHooks, function() Refresh(true) end)
+
+    TPDrop = sec:AddDropdown("TPPlayer", {
+        Title = T("tp_sel_t"), Description = T("tp_sel_d"), Values = BuildList(), Default = 1,
+    })
+
+    sec:AddButton({
+        Title = T("tp_go_t"), Description = T("tp_go_d"),
+        Callback = function()
+            local target = TPMap[TPDrop.Value]
+            if not target or target.Parent ~= Players then
+                Refresh(true)
+                return Note(T("tab_tp"), T("n_tp_missing"))
+            end
+
+            local head = target.Character and target.Character:FindFirstChild("Head")
+            local root = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
+            if not (head and root) then
+                return Note(T("tab_tp"), T("n_tp_notready"))
+            end
+
+            root.AssemblyLinearVelocity = Vector3.zero
+            root.CFrame = CFrame.new(head.Position + Vector3.new(0, 4, 0))
+        end,
+    })
+
+    sec:AddButton({
+        Title = T("tp_rst_t"), Description = T("tp_rst_d"),
+        Callback = function() Refresh(false) end,
+    })
+end
+
+do -- SPECTATE + FOLLOW (ระบบเลือกผู้เล่นแยกจาก TP และแยกจากกันเอง)
+    -- dropdown รายชื่อชุดใหม่ อัปเดตเองเมื่อมีคนเข้า/ออก คืนค่าเป็นฟังก์ชันดึงผู้เล่นที่เลือกอยู่
+    local function MakePicker(sec, id, title, desc, onSwitch)
+        local map, drop = {}, nil
+
+        local function Build()
+            table.clear(map)
+            local labels = {}
+            for _, plr in ipairs(Players:GetPlayers()) do
+                if plr ~= LP then
+                    local l = string.format("%s (@%s)", plr.DisplayName, plr.Name)
+                    map[l] = plr
+                    table.insert(labels, l)
+                end
+            end
+            table.sort(labels)
+            return #labels > 0 and labels or { T("no_players") }
+        end
+
+        drop = sec:AddDropdown(id, { Title = title, Description = desc, Values = Build(), Default = 1 })
+        drop:OnChanged(function() onSwitch(map[drop.Value]) end)
+
+        local function Rebuild()
+            local labels = Build()
+            drop:SetValues(labels)
+            if not map[drop.Value] then drop:SetValue(labels[1]) end
+        end
+        table.insert(LangHooks, Rebuild)
+
+        local pending = false
+        local function Schedule()
+            if pending then return end
+            pending = true
+            task.delay(0.3, function() -- รวมหลายอีเวนต์ติดกันให้เหลือรอบเดียว
+                pending = false
+                if not Fluent.Unloaded then Rebuild() end
+            end)
+        end
+        Track(Players.PlayerAdded:Connect(Schedule))
+        Track(Players.PlayerRemoving:Connect(Schedule))
+
+        return function() return map[drop.Value] end
+    end
+
+    -- ---------- SPECTATE ----------
+    local specSec = Tabs.Teleport:AddSection(T("sec_spec"))
+    local specToggle
+    local GetSpec = MakePicker(specSec, "SpecPlayer", T("spec_pick_t"), T("spec_pick_d"),
+        function(plr)
+            if specToggle and specToggle.Value and plr then StartSpectate(plr) end -- สลับเป้าหมายระหว่างดู
+        end)
+
+    specToggle = AddToggle(specSec, "SpecToggle", T("spec_t"), T("spec_d"), false, function(on)
+        if on then
+            local plr = GetSpec()
+            if not plr then
+                Note(T("spec_t"), T("n_spec_none"))
+                if specToggle then specToggle:SetValue(false) end
+                return
+            end
+            StartSpectate(plr)
+            Note(T("spec_t"), T("n_spec_on", plr.DisplayName), 3)
+        else
+            StopSpectate()
+        end
+    end)
+
+    -- ---------- FOLLOW ----------
+    local folSec = Tabs.Teleport:AddSection(T("sec_fol"))
+    local folToggle
+    local GetFol = MakePicker(folSec, "FollowPlayer", T("fol_pick_t"), T("fol_pick_d"),
+        function(plr)
+            if folToggle and folToggle.Value and plr then StartFollow(plr) end
+        end)
+
+    folToggle = AddToggle(folSec, "FollowToggle", T("fol_t"), T("fol_d"), false, function(on)
+        if on then
+            local plr = GetFol()
+            if not plr then
+                Note(T("fol_t"), T("n_fol_none"))
+                if folToggle then folToggle:SetValue(false) end
+                return
+            end
+            StartFollow(plr)
+            Note(T("fol_t"), T("n_fol_on", plr.DisplayName), 3)
+        else
+            StopFollow()
+        end
+    end)
+
+    folSec:AddSlider("FollowDist", {
+        Title = T("fol_dist_t"), Description = T("fol_dist_d"),
+        Default = Tracking.Dist, Min = 0, Max = 30, Rounding = 1,
+    }):OnChanged(function(v) Tracking.Dist = v UpdateOffset() end)
+    folSec:AddSlider("FollowHeight", {
+        Title = T("fol_h_t"), Description = T("fol_h_d"),
+        Default = Tracking.Height, Min = -5, Max = 15, Rounding = 1,
+    }):OnChanged(function(v) Tracking.Height = v UpdateOffset() end)
+
+    folSec:AddButton({
+        Title = T("trk_stop_t"), Description = T("trk_stop_d"),
+        Callback = function()
+            SetOpt("SpecToggle", false)
+            SetOpt("FollowToggle", false)
+            StopSpectate()
+            StopFollow()
+            Note(T("nt_trk"), T("n_trk_stopped"), 3)
+        end,
+    })
+end
+
+do -- ESP (แยกหมวด: ผู้เล่น / ไอเท็ม  แต่ละหมวด = เปิด ESP -> แสดงข้อมูล -> สี)
+    local function BuildESP(kind)
+        local sec = Tabs.ESP:AddSection(T("sec_" .. kind))
+        AddToggle(sec, "ESP" .. kind, T("esp_" .. kind .. "_t"), T("esp_" .. kind .. "_d"), false, function(v) SetCat(kind, v) end)
+        AddToggle(sec, "Info" .. kind, T("info_" .. kind .. "_t"), T("info_" .. kind .. "_d"), true, function(v) Cats[kind].info = v end)
+        local picker = sec:AddColorpicker("Color" .. kind, {
+            Title = T("col_" .. kind .. "_t"), Description = T("col_" .. kind .. "_d"), Default = Cats[kind].color,
+        })
+        picker:OnChanged(function() Cats[kind].color = picker.Value end)
+    end
+
+    BuildESP("Player")
+    BuildESP("Item")
+end
+
+do -- FLY
+    local sec = Tabs.Main:AddSection(T("sec_fly"))
+    local toggle
+    toggle = AddToggle(sec, "FlyToggle", T("fly_t"), T("fly_d"), false, function(on)
+        if on then
+            if Tracking.Follow then -- ไม่ให้ชนกับระบบ Follow
+                StopFollow()
+                SetOpt("FollowToggle", false)
+            end
+            if not Flying and not StartFly() then toggle:SetValue(false) end
+        elseif Flying then
+            StopFly()
+        end
+    end)
+    AddSlider(sec, "FlySpeed", T("flyspd_t"), T("lvl16_d"), Settings.FlySpeed, 1, MAX_LEVEL,
+        function(v) Settings.FlySpeed = Level(v) end)
+end
+
+do -- MOVEMENT
+    local sec = Tabs.Main:AddSection(T("sec_move"))
+
+    AddToggle(sec, "WalkToggle", T("walk_t"), T("walk_d"), false, function(on)
+        Settings.WalkOn = on
+        if not on then RestoreWalk() else ApplyStats() end
+    end)
+    AddSlider(sec, "WalkLevel", T("walklv_t"), T("lvl16_d"), 1, 1, MAX_LEVEL,
+        function(v) Settings.WalkLevel = Level(v) ApplyStats() end)
+
+    AddToggle(sec, "JumpToggle", T("jump_t"), T("jump_d"), false, function(on)
+        Settings.JumpOn = on
+        if not on then RestoreJump() else ApplyStats() end
+    end)
+    AddSlider(sec, "JumpLevel", T("jumplv_t"), T("lvl50_d"), 1, 1, MAX_LEVEL,
+        function(v) Settings.JumpLevel = Level(v) ApplyStats() end)
+end
+
+do -- VISUAL
+    local sec = Tabs.Main:AddSection(T("sec_vis"))
+
+    AddToggle(sec, "BrightToggle", T("bright_t"), T("bright_d"), false, function(on)
+        Settings.BrightOn = on
+        if not on then Restore(BrightProps) else ApplyVisuals() end
+    end)
+    AddSlider(sec, "BrightLevel", T("light_t"), T("light_d"),
+        Settings.BrightLevel, 1, 10,
+        function(v) Settings.BrightLevel = math.clamp(math.floor(v + 0.5), 1, 10) ApplyVisuals() end)
+
+    AddToggle(sec, "FogToggle", T("fog_t"), T("fog_d"), false, function(on)
+        Settings.NoFog = on
+        if not on then RestoreFog() else ApplyVisuals() end
+    end)
+
+    AddToggle(sec, "BoostToggle", T("boost_t"), T("boost_d"), false, function(on)
+        Settings.Boost = on
+        SetBoost(on)
+        if not on then Restore(BoostProps) end
+    end)
+end
+
+do -- LANGUAGE (หน้า Settings)
+    local sec = Tabs.Settings:AddSection(T("sec_lang"))
+    local drop = sec:AddDropdown("Language", {
+        Title = T("lang_t"), Description = T("lang_d"),
+        Values = LANG_NAMES, Default = (Lang == "th") and 2 or 1,
+    })
+    drop:OnChanged(function(v)
+        local new = (v == LANG_NAMES[2]) and "th" or "en"
+        if new == Lang then return end
+        local old = Lang
+        Lang = new
+        SaveLang()
+        for _, fn in ipairs(LangHooks) do pcall(fn) end -- สร้างรายชื่อผู้เล่นใหม่ตามภาษา
+        local ok = SwapText(old, new)
+        Note("DARK HUB", T(ok and "n_lang" or "n_lang_restart"), 3)
+    end)
+end
+
+--==================================================
+-- SAVE / INTERFACE MANAGER (ช่อง Theme ในนี้เลือกได้แค่ Dark / Light)
+--==================================================
+SaveManager:SetLibrary(Fluent)
+InterfaceManager:SetLibrary(Fluent)
+SaveManager:IgnoreThemeSettings()
+SaveManager:SetIgnoreIndexes({ "FlyToggle", "TPPlayer", "SpecToggle", "SpecPlayer", "FollowToggle", "FollowPlayer", "Language" })
+
+InterfaceManager:SetFolder("DarkHub")
+SaveManager:SetFolder("DarkHub/configs")
+
+do -- INTERFACE: เหลือแค่ Theme + ปุ่มเปิด/ปิดเมนู (ตัด Acrylic / Transparency ออก)
+    pcall(function() InterfaceManager:LoadSettings() end)
+    local S = InterfaceManager.Settings or {}
+    local sec = Tabs.Settings:AddSection(T("sec_iface"))
+
+    local themeDrop = sec:AddDropdown("InterfaceTheme", {
+        Title = T("theme_t"), Description = T("theme_d"), Values = Fluent.Themes,
+        Default = table.find(Fluent.Themes, S.Theme or "Dark") or 1,
+    })
+    themeDrop:OnChanged(function(v)
+        Fluent:SetTheme(v)
+        S.Theme = v
+        pcall(function() InterfaceManager:SaveSettings() end)
+    end)
+
+    -- Ctrl ซ้าย = เปิด/ปิดเมนู เหมือนเดิม (เปลี่ยนปุ่มได้ แต่ไม่จำค่า เปิดใหม่กลับเป็น Ctrl เสมอ)
+    local key = sec:AddKeybind("MenuKeybind", { Title = T("menukey_t"), Default = "LeftControl", Mode = "Toggle" })
+    Fluent.MinimizeKeybind = key
+end
+
+SaveManager:BuildConfigSection(Tabs.Settings)
+
+-- ทำพื้นหลังธีม Dark ให้ดำสนิทขึ้น โดยไม่เปลี่ยนสีส่วนอื่นของ UI
+pcall(function()
+    if Fluent.Options.TransparentToggle then
+        Fluent.Options.TransparentToggle:SetValue(false)
+    else
+        Fluent:ToggleTransparency(false)
+    end
+end)
+pcall(function()
+    Fluent:ToggleTransparency(false)
+    InterfaceManager.Settings.Transparency = false
+end)
+
 task.spawn(function()
-	while gui and gui.Parent do
-		local elapsedTime = math.floor(tick() - startTime)
-		local hours = math.floor(elapsedTime / 3600)
-		local minutes = math.floor((elapsedTime % 3600) / 60)
-		local seconds = elapsedTime % 60
-		
-		TimeLabel.Text = string.format("⏱ เวลาที่รันสคริปต์: %02d:%02d:%02d", hours, minutes, seconds)
-		task.wait(1)
-	end
+    local black = C(3, 3, 3)
+    while not Fluent.Unloaded do
+        if Fluent.Theme == "Dark" then
+            pcall(function()
+                local bg = Window.AcrylicPaint.Frame.Background
+                if bg.BackgroundColor3 ~= black then bg.BackgroundColor3 = black end
+                if bg.BackgroundTransparency ~= 0 then bg.BackgroundTransparency = 0 end
+            end)
+        end
+        task.wait(0.5)
+    end
 end)
 
--- 1. ปุ่มแก้แลค ( Clay Graphics / Remove Effects )
-local FixLagBtn = Instance.new("TextButton")
-FixLagBtn.Name = "FixLagBtn"
-FixLagBtn.Parent = Content
-FixLagBtn.Position = UDim2.new(0.5, 0, 0.22, 0)
-FixLagBtn.AnchorPoint = Vector2.new(0.5, 0)
-FixLagBtn.Size = UDim2.new(0.55, 0, 0.13, 0)
-FixLagBtn.BackgroundColor3 = Color3.fromRGB(0, 140, 220)
-FixLagBtn.Text = "⚡ แก้แลค"
-FixLagBtn.TextColor3 = Color3.new(1, 1, 1)
-FixLagBtn.Font = Enum.Font.GothamBold
-FixLagBtn.TextScaled = true
-FixLagBtn.Visible = false
-FixLagBtn.BorderSizePixel = 0
+Window:SelectTab(1)
+Note("DARK HUB", T("n_loaded"), 5)
+SaveManager:LoadAutoloadConfig()
 
-Instance.new("UICorner", FixLagBtn).CornerRadius = UDim.new(0.2, 0)
-local BtnStroke1 = Instance.new("UIStroke", FixLagBtn)
-BtnStroke1.Thickness = 3
-BtnStroke1.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-ApplyRGBEffect(BtnStroke1, 1.2)
+--==================================================
+-- MINIMIZE ICON (ปุ่มกลม "D" ตอนย่อเมนู กดเพื่อเปิดกลับ ลากย้ายได้)
+-- ธีม Dark = พื้นดำ ตัวขาว / ธีม Light = พื้นขาว ตัวดำ
+--==================================================
+do
+    local Gui = New("ScreenGui", { Name = "DarkHubIcon", ResetOnSpawn = false, DisplayOrder = 999, ZIndexBehavior = Enum.ZIndexBehavior.Sibling })
+    if not pcall(function() Gui.Parent = (gethui and gethui()) or game:GetService("CoreGui") end) then
+        Gui.Parent = LP:WaitForChild("PlayerGui")
+    end
 
--- 2. ปุ่มเปิด/ปิด วิ่งไว (Super Speed Toggle)
-local SpeedBtn = Instance.new("TextButton")
-SpeedBtn.Name = "SuperSpeedBtn"
-SpeedBtn.Parent = Content
-SpeedBtn.Position = UDim2.new(0.5, 0, 0.38, 0)
-SpeedBtn.AnchorPoint = Vector2.new(0.5, 0)
-SpeedBtn.Size = UDim2.new(0.55, 0, 0.13, 0)
-SpeedBtn.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
-SpeedBtn.Text = "⚡ วิ่งไว (OFF)"
-SpeedBtn.TextColor3 = Color3.new(1, 1, 1)
-SpeedBtn.Font = Enum.Font.GothamBold
-SpeedBtn.TextScaled = true
-SpeedBtn.Visible = false
-SpeedBtn.BorderSizePixel = 0
+    local Btn = New("TextButton", {
+        Name = "Icon", Size = UDim2.fromOffset(52, 52), Position = UDim2.new(0, 24, 0.5, -26),
+        AutoButtonColor = false, Text = "D", Font = Enum.Font.GothamBold, TextSize = 28, Visible = false,
+    }, Gui)
+    New("UICorner", { CornerRadius = UDim.new(1, 0) }, Btn)
+    local Stroke = New("UIStroke", { Thickness = 2 }, Btn)
 
-Instance.new("UICorner", SpeedBtn).CornerRadius = UDim.new(0.2, 0)
-local BtnStroke2 = Instance.new("UIStroke", SpeedBtn)
-BtnStroke2.Thickness = 3
-BtnStroke2.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-ApplyRGBEffect(BtnStroke2, 1.2)
+    local function IsPointer(i, move)
+        local t = i.UserInputType
+        return t == Enum.UserInputType.Touch or t == (move and Enum.UserInputType.MouseMovement or Enum.UserInputType.MouseButton1)
+    end
 
--- 3. ปุ่มเปิด/ปิด กระโดดสูง (High Jump Toggle)
-local JumpBtn = Instance.new("TextButton")
-JumpBtn.Name = "HighJumpBtn"
-JumpBtn.Parent = Content
-JumpBtn.Position = UDim2.new(0.5, 0, 0.54, 0)
-JumpBtn.AnchorPoint = Vector2.new(0.5, 0)
-JumpBtn.Size = UDim2.new(0.55, 0, 0.13, 0)
-JumpBtn.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
-JumpBtn.Text = "🦘 กระโดดสูง (OFF)"
-JumpBtn.TextColor3 = Color3.new(1, 1, 1)
-JumpBtn.Font = Enum.Font.GothamBold
-JumpBtn.TextScaled = true
-JumpBtn.Visible = false
-JumpBtn.BorderSizePixel = 0
+    local dragging, moved, dragStart, startPos = false, false, nil, nil
 
-Instance.new("UICorner", JumpBtn).CornerRadius = UDim.new(0.2, 0)
-local BtnStroke3 = Instance.new("UIStroke", JumpBtn)
-BtnStroke3.Thickness = 3
-BtnStroke3.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-ApplyRGBEffect(BtnStroke3, 1.2)
+    Track(Btn.InputBegan:Connect(function(i)
+        if IsPointer(i) then dragging, moved, dragStart, startPos = true, false, i.Position, Btn.Position end
+    end))
 
--- 4. ปุ่มเปิด/ปิด FPS / Ping (อยู่ในหน้า Settings)
-local FpsToggleBtn = Instance.new("TextButton")
-FpsToggleBtn.Name = "FpsToggleBtn"
-FpsToggleBtn.Parent = Content
-FpsToggleBtn.Position = UDim2.new(0.5, 0, 0.22, 0)
-FpsToggleBtn.AnchorPoint = Vector2.new(0.5, 0)
-FpsToggleBtn.Size = UDim2.new(0.55, 0, 0.13, 0)
-FpsToggleBtn.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
-FpsToggleBtn.Text = "📊 แสดง FPS / Ping (OFF)"
-FpsToggleBtn.TextColor3 = Color3.new(1, 1, 1)
-FpsToggleBtn.Font = Enum.Font.GothamBold
-FpsToggleBtn.TextScaled = true
-FpsToggleBtn.Visible = false
-FpsToggleBtn.BorderSizePixel = 0
+    Track(UIS.InputChanged:Connect(function(i)
+        if not (dragging and IsPointer(i, true)) then return end
+        local d = i.Position - dragStart
+        if d.Magnitude > 6 then moved = true end
+        if moved then
+            Btn.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + d.X, startPos.Y.Scale, startPos.Y.Offset + d.Y)
+        end
+    end))
 
-Instance.new("UICorner", FpsToggleBtn).CornerRadius = UDim.new(0.2, 0)
-local BtnStroke4 = Instance.new("UIStroke", FpsToggleBtn)
-BtnStroke4.Thickness = 3
-BtnStroke4.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-ApplyRGBEffect(BtnStroke4, 1.2)
+    Track(UIS.InputEnded:Connect(function(i)
+        if not (dragging and IsPointer(i)) then return end
+        dragging = false
+        if not moved then Window:Minimize() end
+    end))
 
--- [[ ระบบการทำงาน Event ต่างๆ ]]
-local function ResetContent()
-	TimeLabel.Visible = false
-	FixLagBtn.Visible = false
-	SpeedBtn.Visible = false
-	JumpBtn.Visible = false
-	FpsToggleBtn.Visible = false
+    task.spawn(function()
+        local lastTheme, lastVis
+        while not Fluent.Unloaded do
+            local vis = Window.Minimized == true
+            if vis ~= lastVis then Btn.Visible = vis lastVis = vis end
+
+            local theme = Fluent.Theme
+            if theme ~= lastTheme then -- เปลี่ยนสีเฉพาะตอนธีมเปลี่ยน
+                lastTheme = theme
+                local light = theme == "Light"
+                local bg, fg = light and C(245, 247, 250) or C(3, 3, 3), light and C(20, 20, 22) or C(255, 255, 255)
+                Btn.BackgroundColor3, Btn.TextColor3, Stroke.Color = bg, fg, fg
+            end
+            task.wait(0.25)
+        end
+        Gui:Destroy()
+    end)
 end
-
-Home.MouseButton1Click:Connect(function()
-	PlayClickSound()
-	Label.Text = "Home"
-	ResetContent()
-	TimeLabel.Visible = true
-end)
-
-MainTab.MouseButton1Click:Connect(function()
-	PlayClickSound()
-	Label.Text = "Main Menu"
-	ResetContent()
-	FixLagBtn.Visible = true
-	SpeedBtn.Visible = true
-	JumpBtn.Visible = true
-end)
-
-Settings.MouseButton1Click:Connect(function()
-	PlayClickSound()
-	Label.Text = "Settings"
-	ResetContent()
-	FpsToggleBtn.Visible = true
-end)
-
-Credits.MouseButton1Click:Connect(function()
-	PlayClickSound()
-	Label.Text = "Credits"
-	ResetContent()
-end)
-
--- [[ สวิตช์ Toggle FPS/Ping Display ]]
-FpsToggleBtn.MouseButton1Click:Connect(function()
-	PlayClickSound()
-	PerfText.Visible = not PerfText.Visible
-	
-	if PerfText.Visible then
-		FpsToggleBtn.Text = "📊 แสดง FPS / Ping (ON)"
-		FpsToggleBtn.BackgroundColor3 = Color3.fromRGB(50, 180, 50)
-	else
-		FpsToggleBtn.Text = "📊 แสดง FPS / Ping (OFF)"
-		FpsToggleBtn.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
-	end
-end)
-
--- [[ ระบบแก้แลค ( Smooth Clay Graphics + Remove Effects ) ]]
-local isFixLagActive = false
-
-local function ApplyFixLag()
-	-- 1. ปรับปรุงระบบ Lighting (ลบหมอก เงา และ Effect)
-	Lighting.GlobalShadows = false
-	Lighting.FogEnd = 9e9
-	Lighting.FogStart = 0
-	
-	for _, child in pairs(Lighting:GetChildren()) do
-		if child:IsA("PostEffect") or child:IsA("Atmosphere") or child:IsA("Sky") or child:IsA("Clouds") then
-			child:Destroy()
-		end
-	end
-	
-	-- 2. ฟังก์ชันปรับแต่งวัตถุเป็นภาพดินน้ำมันและลบเอฟเฟกต์
-	local function ProcessObject(obj)
-		if obj:IsA("BasePart") then
-			obj.Material = Enum.Material.SmoothPlastic
-			obj.Reflectance = 0
-		elseif obj:IsA("Decal") or obj:IsA("Texture") then
-			obj:Destroy()
-		elseif obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Smoke") or obj:IsA("Fire") or obj:IsA("Sparkles") then
-			obj:Destroy()
-		end
-	end
-
-	for _, obj in pairs(workspace:GetDescendants()) do
-		ProcessObject(obj)
-	end
-
-	workspace.DescendantAdded:Connect(function(obj)
-		if isFixLagActive then
-			task.wait()
-			ProcessObject(obj)
-		end
-	end)
-end
-
-FixLagBtn.MouseButton1Click:Connect(function()
-	PlayClickSound()
-	if not isFixLagActive then
-		isFixLagActive = true
-		ApplyFixLag()
-		FixLagBtn.Text = "⚡ แก้แลค (ทำงานแล้ว)"
-		FixLagBtn.BackgroundColor3 = Color3.fromRGB(50, 180, 50)
-	end
-end)
-
--- [[ ระบบเปิด/ปิด วิ่งไว ]]
-local isSpeedEnabled = false
-local speedMultiplier = 10
-local speedConnection = nil
-
-local function EnableSpeedLoop()
-	if speedConnection then speedConnection:Disconnect() end
-	speedConnection = RunService.Stepped:Connect(function()
-		if isSpeedEnabled and player.Character then
-			local humanoid = player.Character:FindFirstChild("Humanoid")
-			if humanoid then
-				humanoid.WalkSpeed = 16 * speedMultiplier
-			end
-		end
-	end)
-end
-
-local function DisableSpeedLoop()
-	if speedConnection then
-		speedConnection:Disconnect()
-		speedConnection = nil
-	end
-	if player.Character then
-		local humanoid = player.Character:FindFirstChild("Humanoid")
-		if humanoid then
-			humanoid.WalkSpeed = 16
-		end
-	end
-end
-
-SpeedBtn.MouseButton1Click:Connect(function()
-	PlayClickSound()
-	isSpeedEnabled = not isSpeedEnabled
-	
-	if isSpeedEnabled then
-		EnableSpeedLoop()
-		SpeedBtn.Text = "⚡ วิ่งไว (ON)"
-		SpeedBtn.BackgroundColor3 = Color3.fromRGB(50, 180, 50)
-	else
-		DisableSpeedLoop()
-		SpeedBtn.Text = "⚡ วิ่งไว (OFF)"
-		SpeedBtn.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
-	end
-end)
-
--- [[ ระบบเปิด/ปิด กระโดดสูง ]]
-local isJumpEnabled = false
-local jumpPowerValue = 150
-local jumpConnection = nil
-
-local function EnableJumpLoop()
-	if jumpConnection then jumpConnection:Disconnect() end
-	jumpConnection = RunService.Stepped:Connect(function()
-		if isJumpEnabled and player.Character then
-			local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
-			if humanoid then
-				humanoid.UseJumpPower = true
-				humanoid.JumpPower = jumpPowerValue
-				humanoid.JumpHeight = jumpPowerValue / 3
-			end
-		end
-	end)
-end
-
-local function DisableJumpLoop()
-	if jumpConnection then
-		jumpConnection:Disconnect()
-		jumpConnection = nil
-	end
-	if player.Character then
-		local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
-		if humanoid then
-			humanoid.JumpPower = 50
-			humanoid.JumpHeight = 7.2
-		end
-	end
-end
-
-JumpBtn.MouseButton1Click:Connect(function()
-	PlayClickSound()
-	isJumpEnabled = not isJumpEnabled
-	
-	if isJumpEnabled then
-		EnableJumpLoop()
-		JumpBtn.Text = "🦘 กระโดดสูง (ON)"
-		JumpBtn.BackgroundColor3 = Color3.fromRGB(50, 180, 50)
-	else
-		DisableJumpLoop()
-		JumpBtn.Text = "🦘 กระโดดสูง (OFF)"
-		JumpBtn.BackgroundColor3 = Color3.fromRGB(180, 50, 50)
-	end
-end)
-
--- เมื่อตัวละครเกิดใหม่ ให้คงสถานะความเร็วและการโดดไว้
-player.CharacterAdded:Connect(function(character)
-	task.wait(0.5)
-	if isSpeedEnabled then
-		EnableSpeedLoop()
-	end
-	if isJumpEnabled then
-		EnableJumpLoop()
-	end
-end)
-
--- ย่อ / สลับเปิด-ปิด UI
-Min.MouseButton1Click:Connect(function()
-	PlayClickSound()
-	Main.Visible = false
-end)
-
-OpenButton.MouseButton1Click:Connect(function()
-	PlayClickSound()
-	Main.Visible = not Main.Visible
-end)
-
-Close.MouseButton1Click:Connect(function()
-	PlayClickSound()
-	DisableSpeedLoop()
-	DisableJumpLoop()
-	gui:Destroy()
-end)
