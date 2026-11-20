@@ -3,7 +3,7 @@ local SaveManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/d
 local InterfaceManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/InterfaceManager.lua"))()
 
 local Players, RunService, UIS = game:GetService("Players"), game:GetService("RunService"), game:GetService("UserInputService")
-local Lighting = game:GetService("Lighting")
+local Lighting, TeleportService = game:GetService("Lighting"), game:GetService("TeleportService")
 local LP, C = Players.LocalPlayer, Color3.fromRGB
 
 local function New(class, props, parent)
@@ -48,52 +48,68 @@ end
 
 local STR = {
     en = {
-        tab_tp = "Teleport", tab_esp = "ESP", tab_main = "Main", tab_settings = "Settings",
-
+        tab_move = "Movement", tab_players = "Players", tab_visual = "Visual", tab_util = "Utility", tab_settings = "Settings",
+        sec_fly = "FLIGHT",
+        fly_t = "Fly", fly_d = "Fly in the camera direction; use the movement keys to steer",
+        flyspd_t = "Fly Speed", lvl16_d = "x1 = 16  ->  x100 = 1600",
+        sec_speed = "SPEED & JUMP",
+        walk_t = "Walk Speed", walk_d = "Enable to use the walk speed set below", walklv_t = "Walk Level",
+        jump_t = "Jump Power", jump_d = "Enable to use the jump power set below", jumplv_t = "Jump Level",
+        lvl50_d = "x1 = 50  ->  x100 = 5000",
+        infjump_t = "Infinite Jump", infjump_d = "Jump again while in mid-air",
+        sec_special = "SPECIAL",
+        noclip_t = "Noclip", noclip_d = "Walk through walls and structures (the floor stays solid)",
+        water_t = "Walk on Water", water_d = "Walk on top of water instead of swimming (terrain water)",
+        sec_spin = "SPIN",
+        spin_t = "Spin", spin_d = "Make your character spin around and around",
+        spinlv_t = "Spin Speed", lvlspin_d = "x1 = 1 rad/s  ->  x100 = 100 rad/s",
+        spinrev_t = "Reverse Direction", spinrev_d = "Spin the other way",
+        sec_safety = "SAFETY",
+        void_t = "Anti-Void", void_d = "Return to your last safe spot if you fall off the map or through the floor",
         sec_tp = "TELEPORT",
         tp_sel_t = "Select Player", tp_sel_d = "Choose a player to teleport to",
         tp_go_t = "Teleport to Player", tp_go_d = "Teleport above the selected player's head",
-        tp_rst_t = "Reset Player List", tp_rst_d = "Refresh the player list (press when someone joins or leaves)",
-
+        tp_rst_t = "Reset Player List", tp_rst_d = "Refresh the list now (it also updates automatically)",
+        sec_quick = "QUICK TELEPORT",
+        clicktp_t = "Click Teleport", clicktp_d = "Hold Left Alt and click the ground to teleport there",
+        savepos_t = "Save Position", savepos_d = "Remember where you are standing right now",
+        gopos_t = "Go to Saved Position", gopos_d = "Teleport back to the saved position",
         sec_spec = "SPECTATE",
         spec_pick_t = "Spectate Player", spec_pick_d = "Choose a player to watch",
         spec_t = "Spectate", spec_d = "Third-person view of the selected player (your character stays still)",
-
         sec_fol = "FOLLOW",
         fol_pick_t = "Follow Player", fol_pick_d = "Choose a player to stick to",
         fol_t = "Follow", fol_d = "Stick to the selected player's back and go wherever they go",
         fol_dist_t = "Follow Distance", fol_dist_d = "Distance behind the target (1 = touching, higher = further away)",
         fol_h_t = "Follow Height", fol_h_d = "Height relative to the target (negative = lower)",
         trk_stop_t = "Stop All Tracking", trk_stop_d = "Stop Spectate and Follow and return to normal control",
-        no_players = "(No other players)",
-
-        sec_Player = "PLAYER", sec_Item = "ITEM",
+        no_players = "(No other players)", no_match = "(No match)",
+        search_t = "Search Player", search_d = "Type a name or @username to filter the list",
+        sec_Player = "ESP: PLAYERS", sec_Item = "ESP: ITEMS",
         esp_Player_t = "Player ESP", esp_Player_d = "Highlight other players through walls",
         info_Player_t = "Show Player Info", info_Player_d = "Show [Player] name / distance / health above the player",
         col_Player_t = "Player ESP Color", col_Player_d = "Choose the outline and text color for players",
         esp_Item_t = "Item ESP", esp_Item_d = "Highlight items lying on the map and interactable pickups",
         info_Item_t = "Show Item Info", info_Item_d = "Show [Item] name / distance above the item",
         col_Item_t = "Item ESP Color", col_Item_d = "Choose the outline and text color for items",
-
-        sec_fly = "FLY",
-        fly_t = "Fly", fly_d = "Fly in the camera direction; use the movement keys to steer",
-        flyspd_t = "Fly Speed", lvl16_d = "x1 = 16  ->  x100 = 1600",
-        sec_move = "MOVEMENT",
-        walk_t = "Walk Speed", walk_d = "Enable to use the walk speed set below", walklv_t = "Walk Level",
-        jump_t = "Jump Power", jump_d = "Enable to use the jump power set below", jumplv_t = "Jump Level",
-        lvl50_d = "x1 = 50  ->  x100 = 5000",
-        sec_vis = "VISUAL",
+        sec_light = "LIGHTING",
         bright_t = "Full Bright", bright_d = "Toggle bright mode (only you can see it)",
         light_t = "Light Level", light_d = "Brightness 1 (dark) -> 10 (brightest)",
         fog_t = "No Fog", fog_d = "Remove in-game fog (only you can see it)",
+        sec_perf = "PERFORMANCE",
         boost_t = "FPS Boost", boost_d = "Remove effects/textures/shadows for a plainer picture and less lag (only you)",
-
+        sec_cam = "CAMERA",
+        zoom_t = "Infinite Zoom", zoom_d = "Remove the camera zoom-out limit",
+        sec_sess = "SESSION",
+        afk_t = "Anti-AFK", afk_d = "Prevent being kicked for standing idle",
+        respawn_t = "Respawn", respawn_d = "Reset your character",
+        rejoin_t = "Rejoin Server", rejoin_d = "Reconnect to this server (a fresh one if you are alone)",
         sec_lang = "LANGUAGE", lang_t = "Language", lang_d = "Choose the menu language",
         sec_iface = "INTERFACE", theme_t = "Theme", theme_d = "Change the menu theme",
         menukey_t = "Minimize Bind",
-
-        -- notifications (n_ = not part of the static UI)
-        nt_trk = "Tracking",
+        sec_script = "SCRIPT",
+        unload_t = "Unload Script", unload_d = "Close the menu and undo every change",
+        nt_trk = "Tracking", nt_tp = "Teleport", nt_safe = "Safety",
         n_loaded = "Loaded successfully",
         n_boost_done = "Detail reduction complete",
         n_tp_list = "List refreshed: %d player(s)",
@@ -104,55 +120,75 @@ local STR = {
         n_fol_none = "No players to follow", n_fol_on = "Following: %s",
         n_fol_left = "The player you were following left the server",
         n_trk_stopped = "All tracking stopped",
+        n_pos_saved = "Position saved", n_pos_none = "No saved position yet",
+        n_void = "Returned to your last safe spot",
+        n_rejoin = "Rejoining...",
         n_lang = "Language: English",
         n_lang_restart = "Language saved. Re-run the script to apply it fully",
     },
     th = {
-        tab_tp = "วาร์ป", tab_esp = "ESP", tab_main = "หลัก", tab_settings = "ตั้งค่า",
-
+        tab_move = "การเคลื่อนที่", tab_players = "ผู้เล่น", tab_visual = "ภาพ", tab_util = "เครื่องมือ", tab_settings = "ตั้งค่า",
+        sec_fly = "การบิน (FLIGHT)",
+        fly_t = "บิน", fly_d = "บินตามทิศกล้อง ใช้ปุ่มเดินเพื่อควบคุมทิศทาง",
+        flyspd_t = "ความเร็วบิน", lvl16_d = "x1 = 16  ->  x100 = 1600",
+        sec_speed = "ความเร็ว & กระโดด (SPEED)",
+        walk_t = "ความเร็วเดิน", walk_d = "เปิดเพื่อใช้ความเร็วเดินที่ตั้งไว้", walklv_t = "ระดับความเร็วเดิน",
+        jump_t = "แรงกระโดด", jump_d = "เปิดเพื่อใช้แรงกระโดดที่ตั้งไว้", jumplv_t = "ระดับแรงกระโดด",
+        lvl50_d = "x1 = 50  ->  x100 = 5000",
+        infjump_t = "กระโดดไม่จำกัด", infjump_d = "กดกระโดดซ้ำกลางอากาศได้",
+        sec_special = "ความสามารถพิเศษ (SPECIAL)",
+        noclip_t = "ทะลุสิ่งปลูกสร้าง", noclip_d = "เดินทะลุกำแพงและสิ่งปลูกสร้างได้ แต่ยังยืนบนพื้นได้ ไม่ตกแมพ",
+        water_t = "เดินบนผิวน้ำ", water_d = "เดินลอยบนผิวน้ำแทนการว่าย (น้ำของ Terrain)",
+        sec_spin = "หมุน (SPIN)",
+        spin_t = "หมุนตัว", spin_d = "ทำให้ตัวละครหมุนๆๆ ไปเรื่อยๆ",
+        spinlv_t = "ความเร็วหมุน", lvlspin_d = "x1 = 1 rad/s  ->  x100 = 100 rad/s",
+        spinrev_t = "หมุนกลับทิศ", spinrev_d = "หมุนไปทางตรงข้าม",
+        sec_safety = "ความปลอดภัย (SAFETY)",
+        void_t = "กันตกแมพ", void_d = "ถ้าตกแมพหรือทะลุพื้น จะวาร์ปกลับจุดปลอดภัยล่าสุด",
         sec_tp = "วาร์ป (TELEPORT)",
         tp_sel_t = "เลือกผู้เล่น", tp_sel_d = "เลือกผู้เล่นที่จะวาร์ปไปหา",
         tp_go_t = "วาร์ปไปหาผู้เล่น", tp_go_d = "วาร์ปไปอยู่บนหัวผู้เล่นที่เลือก",
-        tp_rst_t = "รีเซ็ตรายชื่อผู้เล่น", tp_rst_d = "รีเฟรชรายชื่อ (กดเมื่อมีคนเข้า/ออกเซิร์ฟ)",
-
+        tp_rst_t = "รีเซ็ตรายชื่อผู้เล่น", tp_rst_d = "รีเฟรชรายชื่อทันที (ปกติอัปเดตเองอยู่แล้ว)",
+        sec_quick = "วาร์ปด่วน (QUICK TELEPORT)",
+        clicktp_t = "คลิกวาร์ป", clicktp_d = "กด Alt ซ้ายค้างแล้วคลิกที่พื้นเพื่อวาร์ปไปจุดนั้น",
+        savepos_t = "บันทึกตำแหน่ง", savepos_d = "จำตำแหน่งที่ยืนอยู่ตอนนี้",
+        gopos_t = "กลับไปตำแหน่งที่บันทึก", gopos_d = "วาร์ปกลับไปจุดที่บันทึกไว้",
         sec_spec = "ดูมุมมอง (SPECTATE)",
         spec_pick_t = "ผู้เล่นที่ต้องการดู", spec_pick_d = "เลือกผู้เล่นที่จะดูมุมมอง",
         spec_t = "ดูมุมมองผู้เล่น", spec_d = "ดูมุมมองบุคคลที่ 3 ของผู้เล่นที่เลือก (ตัวเราไม่ขยับ)",
-
         sec_fol = "เกาะหลัง (FOLLOW)",
         fol_pick_t = "ผู้เล่นที่ต้องการตาม", fol_pick_d = "เลือกผู้เล่นที่จะเกาะหลัง",
         fol_t = "เกาะหลัง", fol_d = "ตัวเราเกาะหลังผู้เล่นที่เลือก เขาไปไหนเราไปด้วย",
         fol_dist_t = "ระยะห่าง", fol_dist_d = "ระยะด้านหลังเป้าหมาย (1 = ติดตัว, เพิ่มเพื่อลอยห่างออก)",
         fol_h_t = "ความสูง", fol_h_d = "ความสูงเทียบกับเป้าหมาย (ลบ = ต่ำกว่า)",
         trk_stop_t = "หยุดติดตามทั้งหมด", trk_stop_d = "หยุด Spectate และ Follow แล้วกลับมาควบคุมตัวเองปกติ",
-        no_players = "(ไม่มีผู้เล่นอื่น)",
-
-        sec_Player = "ผู้เล่น (PLAYER)", sec_Item = "ไอเท็ม (ITEM)",
+        no_players = "(ไม่มีผู้เล่นอื่น)", no_match = "(ไม่พบผู้เล่น)",
+        search_t = "ค้นหาผู้เล่น", search_d = "พิมพ์ชื่อหรือ @username เพื่อกรองรายชื่อ",
+        sec_Player = "ESP ผู้เล่น (PLAYERS)", sec_Item = "ESP ไอเท็ม (ITEMS)",
         esp_Player_t = "ESP ผู้เล่น", esp_Player_d = "ไฮไลต์ผู้เล่นคนอื่น มองเห็นทะลุกำแพง",
         info_Player_t = "แสดงข้อมูลผู้เล่น", info_Player_d = "แสดงป้าย [Player] ชื่อ / ระยะ / เลือด เหนือหัวผู้เล่น",
         col_Player_t = "สี ESP ผู้เล่น", col_Player_d = "เลือกสีกรอบและตัวอักษรของผู้เล่น",
         esp_Item_t = "ESP ไอเท็ม", esp_Item_d = "ไฮไลต์ไอเท็มที่วางอยู่ในแมพ และของที่กดเก็บ/โต้ตอบได้",
         info_Item_t = "แสดงข้อมูลไอเท็ม", info_Item_d = "แสดงป้าย [Item] ชื่อ / ระยะ เหนือไอเท็ม",
         col_Item_t = "สี ESP ไอเท็ม", col_Item_d = "เลือกสีกรอบและตัวอักษรของไอเท็ม",
-
-        sec_fly = "บิน (FLY)",
-        fly_t = "บิน", fly_d = "บินตามทิศกล้อง ใช้ปุ่มเดินเพื่อควบคุมทิศทาง",
-        flyspd_t = "ความเร็วบิน", lvl16_d = "x1 = 16  ->  x100 = 1600",
-        sec_move = "การเคลื่อนไหว (MOVEMENT)",
-        walk_t = "ความเร็วเดิน", walk_d = "เปิดเพื่อใช้ความเร็วเดินที่ตั้งไว้", walklv_t = "ระดับความเร็วเดิน",
-        jump_t = "แรงกระโดด", jump_d = "เปิดเพื่อใช้แรงกระโดดที่ตั้งไว้", jumplv_t = "ระดับแรงกระโดด",
-        lvl50_d = "x1 = 50  ->  x100 = 5000",
-        sec_vis = "ภาพ (VISUAL)",
+        sec_light = "แสงและหมอก (LIGHTING)",
         bright_t = "โหมดสว่าง", bright_d = "เปิด/ปิดโหมดสว่าง เห็นแค่เราคนเดียว",
         light_t = "ระดับความสว่าง", light_d = "ระดับความสว่าง 1 (มืด) -> 10 (สว่างสุด)",
         fog_t = "ลบหมอก", fog_d = "ลบหมอกในเกม (เห็นแค่เราคนเดียว)",
+        sec_perf = "ประสิทธิภาพ (PERFORMANCE)",
         boost_t = "เพิ่ม FPS", boost_d = "ลบเอฟเฟกต์/เท็กซ์เจอร์/เงา ให้ภาพเรียบๆ ลดแลค (เห็นแค่เรา)",
-
+        sec_cam = "กล้อง (CAMERA)",
+        zoom_t = "ซูมไม่จำกัด", zoom_d = "ปลดล็อกระยะซูมออกของกล้อง",
+        sec_sess = "เซสชัน (SESSION)",
+        afk_t = "กันหลุดเมื่อไม่ขยับ", afk_d = "กันโดนเตะตอนยืนนิ่งไม่ขยับ (AFK)",
+        respawn_t = "เกิดใหม่", respawn_d = "รีเซ็ตตัวละคร",
+        rejoin_t = "เข้าเซิร์ฟใหม่", rejoin_d = "เชื่อมต่อเซิร์ฟนี้ใหม่ (ถ้าอยู่คนเดียวจะเข้าเซิร์ฟใหม่)",
         sec_lang = "ภาษา (LANGUAGE)", lang_t = "ภาษา", lang_d = "เลือกภาษาของเมนู",
         sec_iface = "หน้าตา (INTERFACE)", theme_t = "ธีม", theme_d = "เปลี่ยนธีมของเมนู",
         menukey_t = "ปุ่มย่อ/เปิดเมนู",
-
-        nt_trk = "ติดตาม",
+        sec_script = "สคริปต์ (SCRIPT)",
+        unload_t = "ปิดสคริปต์", unload_d = "ปิดเมนูและคืนค่าทุกอย่างกลับเป็นปกติ",
+        nt_trk = "ติดตาม", nt_tp = "วาร์ป", nt_safe = "ความปลอดภัย",
         n_loaded = "โหลดเรียบร้อย",
         n_boost_done = "ลดรายละเอียดเรียบร้อย",
         n_tp_list = "รีเซ็ตรายชื่อแล้ว: %d คน",
@@ -163,6 +199,9 @@ local STR = {
         n_fol_none = "ไม่มีผู้เล่นให้ตาม", n_fol_on = "กำลังเกาะหลัง: %s",
         n_fol_left = "ผู้เล่นที่ตามอยู่ออกจากเซิร์ฟแล้ว",
         n_trk_stopped = "หยุดทั้งหมดแล้ว",
+        n_pos_saved = "บันทึกตำแหน่งแล้ว", n_pos_none = "ยังไม่ได้บันทึกตำแหน่ง",
+        n_void = "วาร์ปกลับจุดปลอดภัยล่าสุดแล้ว",
+        n_rejoin = "กำลังเข้าเซิร์ฟใหม่...",
         n_lang = "ภาษา: ไทย",
         n_lang_restart = "บันทึกภาษาแล้ว รันสคริปต์ใหม่เพื่อให้มีผลทั้งหมด",
     },
@@ -178,11 +217,11 @@ end
 local REV = { en = {}, th = {} }
 for lang, tbl in next, STR do
     for k, v in next, tbl do
-        if k:sub(1, 2) ~= "n_" then REV[lang][v] = k end
+        if k:sub(1, 2) ~= "n_" and k:sub(1, 3) ~= "nt_" then REV[lang][v] = k end
     end
 end
 
-local LangHooks = {} -- ฟังก์ชันที่ต้องรันตอนเปลี่ยนภาษา (เช่น สร้างรายชื่อ dropdown ใหม่)
+local LangHooks = {}
 
 local function Note(title, content, dur)
     Fluent:Notify({ Title = title, Content = content, Duration = dur or 4 })
@@ -197,7 +236,13 @@ end
 --==================================================
 -- STATE
 --==================================================
-local Settings = { FlySpeed = 3, WalkOn = false, WalkLevel = 1, JumpOn = false, JumpLevel = 1, BrightOn = false, BrightLevel = 10, NoFog = false, Boost = false }
+local Settings = {
+    FlySpeed = 3, WalkOn = false, WalkLevel = 1, JumpOn = false, JumpLevel = 1, InfJump = false,
+    NoclipOn = false, WaterOn = false,
+    SpinOn = false, SpinLevel = 10, SpinReverse = false,
+    AntiVoid = true, ClickTP = false, Zoom = false, AntiAFK = true,
+    BrightOn = false, BrightLevel = 10, NoFog = false, Boost = false,
+}
 local MAX_LEVEL, WALK_BASE, JUMP_BASE, FLY_BASE = 100, 16, 50, 16
 
 local Links = {}
@@ -208,14 +253,19 @@ local function GetHumanoid()
     return char and char:FindFirstChildOfClass("Humanoid")
 end
 
+local function GetRoot()
+    local char = LP.Character
+    return char and char:FindFirstChild("HumanoidRootPart")
+end
+
 --==================================================
--- ESP (แยก 2 หมวด: ผู้เล่น / ไอเท็ม)
+-- ESP
 --==================================================
 local Cats = {
     Player = { on = false, info = true, color = C(255, 255, 255), tag = "Player" },
     Item   = { on = false, info = true, color = C(255, 220, 60),   tag = "Item"   },
 }
-local Entries = {} -- [key] = { kind, hl, bb, label, adornee, hum, name, text }
+local Entries = {}
 
 local function RemoveEntry(key)
     local e = Entries[key]
@@ -228,7 +278,6 @@ end
 local function AddEntry(kind, key, hlTarget, adornee, hum, name)
     local cat = Cats[kind]
     if not cat.on or Entries[key] or not (key.Parent and adornee.Parent) then return end
-
     local col = cat.color
     local hl = New("Highlight", {
         Name = "DarkHubHighlight", Adornee = hlTarget, FillColor = col, OutlineColor = col,
@@ -242,29 +291,23 @@ local function AddEntry(kind, key, hlTarget, adornee, hum, name)
         Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Font = Enum.Font.GothamBold,
         TextSize = 12, TextColor3 = col, TextStrokeTransparency = 0.25,
     }, bb)
-
     Entries[key] = { kind = kind, hl = hl, bb = bb, label = label, adornee = adornee, hum = hum, name = name, text = "" }
 end
 
--- ESP ผู้เล่นเท่านั้น: ไม่ตรวจจับ Humanoid ที่ไม่ใช่ผู้เล่น
 local function AddHumanoid(hum)
     local model = hum.Parent
     if not (model and model:IsA("Model")) then return end
-
     local plr = Players:GetPlayerFromCharacter(model)
     if not plr or plr == LP or not Cats.Player.on then return end
-
     local root = hum.RootPart or model:FindFirstChild("HumanoidRootPart")
     root = root or model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart")
     if not root then return end
-
     local head = model:FindFirstChild("Head")
     AddEntry("Player", model, model,
         (head and head:IsA("BasePart")) and head or root,
         hum, plr.DisplayName)
 end
 
--- ไอเท็ม: Tool ที่วางอยู่ในแมพ
 local function AddTool(tool)
     if not Cats.Item.on then return end
     if tool.Parent and tool.Parent:FindFirstChildOfClass("Humanoid") then return end
@@ -272,18 +315,15 @@ local function AddTool(tool)
     if part and part:IsA("BasePart") then AddEntry("Item", tool, part, part, nil, tool.Name) end
 end
 
--- ไอเท็ม: ของที่กดเก็บ/โต้ตอบได้ (ProximityPrompt)
 local function AddPrompt(prompt)
     if not Cats.Item.on then return end
     local part = prompt.Parent
     if part and part:IsA("Attachment") then part = part.Parent end
     if not (part and part:IsA("BasePart")) then return end
-
     local model = part:FindFirstAncestorOfClass("Model")
-    if model and model:FindFirstChildOfClass("Humanoid") then return end -- ของติดตัว NPC/ผู้เล่น ข้าม
-
+    if model and model:FindFirstChildOfClass("Humanoid") then return end
     local target = part
-    if model and model:GetExtentsSize().Magnitude <= 40 then target = model end -- โมเดลเล็ก = ไฮไลต์ทั้งชิ้น
+    if model and model:GetExtentsSize().Magnitude <= 40 then target = model end
     local name = prompt.ObjectText ~= "" and prompt.ObjectText or (target ~= part and target.Name) or part.Name
     AddEntry("Item", target, target, part, nil, name)
 end
@@ -303,20 +343,13 @@ local scanPending = false
 
 local function Rescan()
     scanGen += 1
-
-    -- ถ้ามีการกดเปิดอีกหมวดระหว่างสแกน ให้สแกนรอบใหม่ต่อหลังรอบปัจจุบันหยุด
-    if scanning then
-        scanPending = true
-        return
-    end
-
+    if scanning then scanPending = true return end
     scanning = true
     task.spawn(function()
         repeat
             scanPending = false
             local gen = scanGen
             local slice = Slicer()
-
             local ok, descendants = pcall(function() return workspace:GetDescendants() end)
             if ok and type(descendants) == "table" then
                 for _, inst in ipairs(descendants) do
@@ -326,7 +359,6 @@ local function Rescan()
                 end
             end
         until not scanPending and scanGen == gen
-
         scanning = false
     end)
 end
@@ -335,7 +367,6 @@ local function SetCat(kind, on)
     Cats[kind].on = on
     if on then
         if kind == "Player" then
-            -- ตรวจเฉพาะรายชื่อผู้เล่นจริง ไม่ไล่สแกน Workspace ทั้งหมด
             for _, player in ipairs(Players:GetPlayers()) do
                 if player ~= LP and player.Character then
                     local hum = player.Character:FindFirstChildOfClass("Humanoid")
@@ -358,64 +389,51 @@ local function ClearESP()
     for key in next, Entries do RemoveEntry(key) end
 end
 
--- ถ้าไม่มี ESP หมวดไหนเปิดอยู่ ไม่ต้องเสียเวลาเช็กของใหม่ที่เข้ามาในแมพเลย
 Track(workspace.DescendantAdded:Connect(function(inst)
     if Cats.Player.on or Cats.Item.on then pcall(Consider, inst) end
 end))
 
 local lastESP = 0
-local function UpdateESP() -- อัปเดต ~5 ครั้ง/วินาที
+local function UpdateESP()
     local now = os.clock()
     if now - lastESP < 0.2 then return end
     lastESP = now
     if next(Entries) == nil then return end
-
     local cam = workspace.CurrentCamera
     if not cam then return end
     local camPos = cam.CFrame.Position
-
     for key, e in next, Entries do
         if not (key.Parent and e.adornee.Parent and key:IsDescendantOf(workspace)) then
             RemoveEntry(key)
         else
             local cat = Cats[e.kind]
-            if e.hl.FillColor ~= cat.color then
-                e.hl.FillColor, e.hl.OutlineColor = cat.color, cat.color
-            end
-            if e.label.TextColor3 ~= cat.color then
-                e.label.TextColor3 = cat.color
-            end
-            if e.bb.Enabled ~= cat.info then
-                e.bb.Enabled = cat.info
-            end
-
+            if e.hl.FillColor ~= cat.color then e.hl.FillColor, e.hl.OutlineColor = cat.color, cat.color end
+            if e.label.TextColor3 ~= cat.color then e.label.TextColor3 = cat.color end
+            if e.bb.Enabled ~= cat.info then e.bb.Enabled = cat.info end
             if cat.info then
                 local text = string.format("[%s] %s\n%d studs", cat.tag, e.name,
                     math.floor((camPos - e.adornee.Position).Magnitude))
                 if e.hum and e.hum.Parent then
                     text ..= string.format(" | HP: %d/%d", math.floor(e.hum.Health), math.floor(e.hum.MaxHealth))
                 end
-                if text ~= e.text then -- เขียนเฉพาะตอนข้อความเปลี่ยนจริง
-                    e.text = text
-                    e.label.Text = text
-                end
+                if text ~= e.text then e.text = text e.label.Text = text end
             end
         end
     end
 end
 
 --==================================================
--- FLY (บินตามทิศกล้อง)
+-- FLY
 --==================================================
 local Flying = false
 local flyBV, flyBG, flyConn
+local GYRO_TORQUE = Vector3.new(9e9, 9e9, 9e9)
 
 local function StopFly()
     Flying = false
     if flyConn then flyConn:Disconnect() flyConn = nil end
     if flyBV then flyBV:Destroy() flyBV = nil end
     if flyBG then flyBG:Destroy() flyBG = nil end
-
     local hum = GetHumanoid()
     if hum then
         hum.PlatformStand = false
@@ -425,29 +443,28 @@ end
 
 local function StartFly()
     local hum = GetHumanoid()
-    local root = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
+    local root = GetRoot()
     if not (hum and root) then return false end
-
     Flying = true
     hum.PlatformStand = true
     flyBV = New("BodyVelocity", { MaxForce = Vector3.new(9e9, 9e9, 9e9), Velocity = Vector3.zero }, root)
-    flyBG = New("BodyGyro", { MaxTorque = Vector3.new(9e9, 9e9, 9e9), P = 9e4, CFrame = root.CFrame }, root)
-
+    flyBG = New("BodyGyro", { MaxTorque = GYRO_TORQUE, P = 9e4, CFrame = root.CFrame }, root)
     flyConn = RunService.RenderStepped:Connect(function()
         local cam = workspace.CurrentCamera
         if not (Flying and cam and root.Parent) or hum.Health <= 0 then return end
-
         local move = cam.CFrame:VectorToObjectSpace(hum.MoveDirection)
         local dir = cam.CFrame.LookVector * -move.Z + cam.CFrame.RightVector * move.X
-
         flyBV.Velocity = (dir.Magnitude > 0 and dir.Unit or dir) * (Settings.FlySpeed * FLY_BASE)
-        flyBG.CFrame = cam.CFrame
+        local gyroOn = not Settings.SpinOn
+        local want = gyroOn and GYRO_TORQUE or Vector3.zero
+        if flyBG.MaxTorque ~= want then flyBG.MaxTorque = want end
+        if gyroOn then flyBG.CFrame = cam.CFrame end
     end)
     return true
 end
 
 --==================================================
--- WALK / JUMP (เขียนค่าเฉพาะตอนค่าไม่ตรง ไม่เขียนซ้ำทุกเฟรม)
+-- WALK / JUMP
 --==================================================
 local Orig = {}
 
@@ -459,9 +476,7 @@ end
 
 local function RestoreJump()
     local hum = GetHumanoid()
-    if hum and Orig.Jump then
-        hum[Orig.UsePower and "JumpPower" or "JumpHeight"] = Orig.Jump
-    end
+    if hum and Orig.Jump then hum[Orig.UsePower and "JumpPower" or "JumpHeight"] = Orig.Jump end
     Orig.Jump, Orig.UsePower = nil, nil
 end
 
@@ -469,13 +484,11 @@ local function ApplyStats()
     if not (Settings.WalkOn or Settings.JumpOn) then return end
     local hum = GetHumanoid()
     if not hum then return end
-
     if Settings.WalkOn then
         Orig.Walk = Orig.Walk or hum.WalkSpeed
         local v = WALK_BASE * Settings.WalkLevel
         if hum.WalkSpeed ~= v then hum.WalkSpeed = v end
     end
-
     if Settings.JumpOn then
         local power = JUMP_BASE * Settings.JumpLevel
         if Orig.Jump == nil then
@@ -499,8 +512,209 @@ Track(LP.CharacterAdded:Connect(function()
     end
 end))
 
+Track(UIS.JumpRequest:Connect(function()
+    if not Settings.InfJump then return end
+    local hum = GetHumanoid()
+    if hum and hum.Health > 0 then hum:ChangeState(Enum.HumanoidStateType.Jumping) end
+end))
+
 --==================================================
--- VISUAL (แก้ Lighting ฝั่งเรา เห็นแค่เราคนเดียว)
+-- SPIN
+--==================================================
+local SPIN_BASE = 1
+local spinBV, spinAuto
+
+local function StopSpin()
+    if spinBV then spinBV:Destroy() spinBV = nil end
+    local hum = GetHumanoid()
+    if hum and spinAuto ~= nil then hum.AutoRotate = spinAuto end
+    spinAuto = nil
+end
+
+local function ApplySpin()
+    if not Settings.SpinOn then return end
+    local char = LP.Character
+    local root = char and char:FindFirstChild("HumanoidRootPart")
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    if not (root and hum) then return end
+    if not (spinBV and spinBV.Parent == root) then
+        if spinBV then spinBV:Destroy() end
+        spinBV = New("BodyAngularVelocity", {
+            Name = "DarkHubSpin", MaxTorque = Vector3.new(0, 9e9, 0), P = 1e5,
+        }, root)
+    end
+    if spinAuto == nil then spinAuto = hum.AutoRotate end
+    if hum.AutoRotate then hum.AutoRotate = false end
+    local av = Vector3.new(0, Settings.SpinLevel * SPIN_BASE * (Settings.SpinReverse and -1 or 1), 0)
+    if spinBV.AngularVelocity ~= av then spinBV.AngularVelocity = av end
+end
+
+--==================================================
+-- CLIP
+--==================================================
+local Clip = { users = {}, conn = nil, parts = {}, char = nil }
+
+local function ClipCache(char)
+    Clip.char, Clip.parts = char, {}
+    for _, p in ipairs(char:GetDescendants()) do
+        if p:IsA("BasePart") and p.CanCollide then table.insert(Clip.parts, p) end
+    end
+end
+
+local function ClipStep()
+    local char = LP.Character
+    if not char then return end
+    if char ~= Clip.char or #Clip.parts == 0 then ClipCache(char) end
+    for _, p in ipairs(Clip.parts) do
+        if p.CanCollide then p.CanCollide = false end
+    end
+end
+
+local function ClipAcquire(who)
+    Clip.users[who] = true
+    if not Clip.conn then Clip.conn = RunService.Stepped:Connect(ClipStep) end
+end
+
+local function ClipRelease(who)
+    if not Clip.users[who] then return end
+    Clip.users[who] = nil
+    if next(Clip.users) ~= nil then return end
+    if Clip.conn then Clip.conn:Disconnect() Clip.conn = nil end
+    for _, p in ipairs(Clip.parts) do
+        if p.Parent then p.CanCollide = true end
+    end
+    Clip.parts, Clip.char = {}, nil
+end
+
+--==================================================
+-- WALK ON WATER
+--==================================================
+local WW = { conn = nil, part = nil, acc = 0, surf = nil }
+local wwParams = RaycastParams.new()
+wwParams.FilterType = Enum.RaycastFilterType.Exclude
+wwParams.IgnoreWater = false
+
+local function StopWater()
+    if WW.conn then WW.conn:Disconnect() WW.conn = nil end
+    if WW.part then WW.part:Destroy() WW.part = nil end
+    WW.surf = nil
+end
+
+local function StartWater()
+    if WW.conn then return end
+    WW.acc = 0
+    WW.conn = RunService.Heartbeat:Connect(function(dt)
+        local char = LP.Character
+        local root = char and char:FindFirstChild("HumanoidRootPart")
+        if not root then return end
+        if not (WW.part and WW.part.Parent) then
+            WW.part = New("Part", {
+                Name = "DarkHubWater", Anchored = true, CanCollide = false, Transparency = 1,
+                CanQuery = false, CanTouch = false, CastShadow = false, Locked = true,
+                Size = Vector3.new(16, 1, 16),
+            }, workspace)
+        end
+        WW.acc += dt
+        if WW.acc >= 0.1 then
+            WW.acc = 0
+            wwParams.FilterDescendantsInstances = { char }
+            local hit = workspace:Raycast(root.Position + Vector3.new(0, 4, 0), Vector3.new(0, -64, 0), wwParams)
+            WW.surf = (hit and hit.Material == Enum.Material.Water) and hit.Position.Y or nil
+            local hum = char:FindFirstChildOfClass("Humanoid")
+            if WW.surf and hum then
+                local off = hum.RigType == Enum.HumanoidRigType.R6 and 3 or (hum.HipHeight + root.Size.Y / 2)
+                local feet = root.Position.Y - off
+                if feet < WW.surf - 0.2 and feet > WW.surf - 5 then
+                    root.CFrame += Vector3.new(0, WW.surf - feet + 0.1, 0)
+                    local v = root.AssemblyLinearVelocity
+                    root.AssemblyLinearVelocity = Vector3.new(v.X, 0, v.Z)
+                end
+            end
+        end
+        local part, on = WW.part, WW.surf ~= nil
+        if part.CanCollide ~= on then part.CanCollide = on end
+        if on then part.CFrame = CFrame.new(root.Position.X, WW.surf - 0.5, root.Position.Z) end
+    end)
+end
+
+--==================================================
+-- SAFETY
+--==================================================
+local lastSafe
+local voidParams = RaycastParams.new()
+voidParams.FilterType = Enum.RaycastFilterType.Exclude
+
+local function SafetyTick()
+    if not (Settings.AntiVoid or Settings.NoclipOn) then return end
+    local char = LP.Character
+    local root = char and char:FindFirstChild("HumanoidRootPart")
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    if not (root and hum and hum.Health > 0) then return end
+    if hum.FloorMaterial ~= Enum.Material.Air then
+        lastSafe = root.CFrame + Vector3.new(0, 2, 0)
+        return
+    end
+    if not lastSafe then return end
+    local y, danger = root.Position.Y, false
+    local destroy = workspace.FallenPartsDestroyHeight
+    if Settings.AntiVoid and type(destroy) == "number" and destroy > -1e6 and y < destroy + 80 then
+        danger = true
+    elseif Settings.NoclipOn and y < lastSafe.Position.Y - 60 and root.AssemblyLinearVelocity.Y < -40 then
+        voidParams.FilterDescendantsInstances = { char }
+        danger = workspace:Raycast(root.Position, Vector3.new(0, -4000, 0), voidParams) == nil
+    end
+    if danger then
+        root.AssemblyLinearVelocity = Vector3.zero
+        root.CFrame = lastSafe
+        Note(T("nt_safe"), T("n_void"), 3)
+    end
+end
+
+--==================================================
+-- UTILITY
+--==================================================
+local clickParams = RaycastParams.new()
+clickParams.FilterType = Enum.RaycastFilterType.Exclude
+
+Track(UIS.InputBegan:Connect(function(input, processed)
+    if processed or not Settings.ClickTP then return end
+    if input.UserInputType ~= Enum.UserInputType.MouseButton1 or not UIS:IsKeyDown(Enum.KeyCode.LeftAlt) then return end
+    local cam, char = workspace.CurrentCamera, LP.Character
+    local root = char and char:FindFirstChild("HumanoidRootPart")
+    if not (cam and root) then return end
+    local loc = UIS:GetMouseLocation()
+    local ray = cam:ViewportPointToRay(loc.X, loc.Y)
+    clickParams.FilterDescendantsInstances = { char }
+    local hit = workspace:Raycast(ray.Origin, ray.Direction * 5000, clickParams)
+    if hit then
+        root.AssemblyLinearVelocity = Vector3.zero
+        root.CFrame = CFrame.new(hit.Position + Vector3.new(0, 3.5, 0)) * root.CFrame.Rotation
+    end
+end))
+
+local VU
+pcall(function() VU = game:GetService("VirtualUser") end)
+Track(LP.Idled:Connect(function()
+    if not (Settings.AntiAFK and VU) then return end
+    pcall(function()
+        VU:CaptureController()
+        VU:ClickButton2(Vector2.new())
+    end)
+end))
+
+local origZoom
+local function ApplyZoom(on)
+    if on then
+        origZoom = origZoom or LP.CameraMaxZoomDistance
+        LP.CameraMaxZoomDistance = 100000
+    elseif origZoom then
+        LP.CameraMaxZoomDistance = origZoom
+        origZoom = nil
+    end
+end
+
+--==================================================
+-- VISUAL
 --==================================================
 local Saved, SavedAtmo = {}, {}
 local BrightProps = { "Brightness", "Ambient", "OutdoorAmbient", "ClockTime", "GlobalShadows", "ExposureCompensation" }
@@ -513,11 +727,19 @@ local function Save(props)
     end
 end
 
+-- ข้าม GlobalShadows ถ้าระบบอื่น (Bright/Boost) ยังต้องใช้ค่าอยู่
 local function Restore(props)
     for _, p in ipairs(props) do
         if Saved[p] ~= nil then
-            Lighting[p] = Saved[p]
-            Saved[p] = nil
+            local inUse = false
+            if p == "GlobalShadows" then
+                if props == BrightProps and Settings.Boost then inUse = true
+                elseif props == BoostProps and Settings.BrightOn then inUse = true end
+            end
+            if not inUse then
+                Lighting[p] = Saved[p]
+                Saved[p] = nil
+            end
         end
     end
 end
@@ -530,21 +752,24 @@ local function RestoreFog()
     end
 end
 
-local function SetL(prop, val) -- เขียน Lighting เฉพาะตอนค่าเปลี่ยนจริง
+local function SetL(prop, val)
     if Lighting[prop] ~= val then Lighting[prop] = val end
 end
 
+local function ApplyBrightnessOnly()
+    if not Settings.BrightOn then return end
+    Save(BrightProps)
+    local t = Settings.BrightLevel / 10
+    SetL("Brightness", 1 + t * 3)
+    SetL("Ambient", Color3.new(t, t, t))
+    SetL("OutdoorAmbient", Color3.new(t, t, t))
+    SetL("ExposureCompensation", (t - 0.5) * 2)
+    SetL("ClockTime", 14)
+    SetL("GlobalShadows", false)
+end
+
 local function ApplyVisuals()
-    if Settings.BrightOn then
-        Save(BrightProps)
-        local t = Settings.BrightLevel / 10              -- 0.1 -> 1.0
-        SetL("Brightness", 1 + t * 3)                    -- 1.3 -> 4
-        SetL("Ambient", Color3.new(t, t, t))
-        SetL("OutdoorAmbient", Color3.new(t, t, t))
-        SetL("ExposureCompensation", (t - 0.5) * 2)      -- -0.8 -> +1
-        SetL("ClockTime", 14)
-        SetL("GlobalShadows", false)
-    end
+    ApplyBrightnessOnly()
 
     if Settings.NoFog then
         Save(FogProps)
@@ -565,15 +790,21 @@ local function ApplyVisuals()
     end
 end
 
---------------------------------------------------
--- FPS BOOST: ลบเอฟเฟกต์ / เท็กซ์เจอร์ / รายละเอียดที่ทำให้แลค (เก็บค่าเดิมไว้คืนตอนปิด)
---------------------------------------------------
-local Boost = setmetatable({}, { __mode = "k" }) -- [instance] = { prop = ค่าเดิม }
+-- เขียนค่าความสว่างใหม่ทุกเฟรม (60 ครั้ง/วินาที) กันการกระพริบ
+Track(RunService.RenderStepped:Connect(function()
+    if Fluent.Unloaded or not Settings.BrightOn then return end
+    ApplyBrightnessOnly()
+end))
+
+--==================================================
+-- FPS BOOST
+--==================================================
+local Boost = setmetatable({}, { __mode = "k" })
 local BoostGen, BoostConn, OrigQuality = 0, {}, nil
 local MapProps = { "ColorMap", "NormalMap", "MetalnessMap", "RoughnessMap" }
 
 local function Mod(inst, prop, val)
-    if inst[prop] == val then return end -- ค่าตรงอยู่แล้ว ไม่ต้องเขียน/ไม่ต้องจดซ้ำ
+    if inst[prop] == val then return end
     local rec = Boost[inst]
     if not rec then rec = {} Boost[inst] = rec end
     if rec[prop] == nil then rec[prop] = inst[prop] end
@@ -586,16 +817,17 @@ local function Reduce(inst)
     if inst:IsA("PostEffect") or inst:IsA("ParticleEmitter") or inst:IsA("Trail") or inst:IsA("Beam")
         or inst:IsA("Fire") or inst:IsA("Smoke") or inst:IsA("Sparkles") or inst:IsA("Clouds") then
         Mod(inst, "Enabled", false)
-    elseif inst:IsA("Decal") then -- รวม Texture ด้วย (เว้นหน้าตัวละคร)
+    elseif inst:IsA("Decal") then
         if inst.Name ~= "face" then Mod(inst, "Transparency", 1) end
     elseif inst:IsA("SurfaceAppearance") then
         for _, p in ipairs(MapProps) do pcall(Mod, inst, p, "") end
     elseif inst:IsA("Terrain") then
-        pcall(Mod, inst, "Decoration", false) -- หญ้า
+        pcall(Mod, inst, "Decoration", false)
         Mod(inst, "WaterWaveSize", 0)
         Mod(inst, "WaterWaveSpeed", 0)
         Mod(inst, "WaterReflectance", 0)
     elseif inst:IsA("BasePart") then
+        if inst.Name == "DarkHubWater" then return end
         Mod(inst, "Material", Enum.Material.SmoothPlastic)
         Mod(inst, "Reflectance", 0)
         Mod(inst, "CastShadow", false)
@@ -611,20 +843,17 @@ local function SetBoost(on)
     local gen = BoostGen
     for _, c in ipairs(BoostConn) do c:Disconnect() end
     table.clear(BoostConn)
-
     if on then
         pcall(function()
             local r = settings().Rendering
             OrigQuality = OrigQuality or r.QualityLevel
             r.QualityLevel = Enum.QualityLevel.Level01
         end)
-
         local roots = { workspace, Lighting }
         for _, root in ipairs(roots) do
             table.insert(BoostConn, root.DescendantAdded:Connect(function(i) pcall(Reduce, i) end))
         end
-
-        task.spawn(function() -- แบ่งเฟรมตามเวลา ไม่ให้เกมค้างตอนเปิด
+        task.spawn(function()
             local slice = Slicer()
             for _, root in ipairs(roots) do
                 for _, inst in ipairs(root:GetDescendants()) do
@@ -640,7 +869,6 @@ local function SetBoost(on)
             if OrigQuality then settings().Rendering.QualityLevel = OrigQuality end
             OrigQuality = nil
         end)
-
         task.spawn(function()
             local slice = Slicer()
             for inst, rec in next, Boost do
@@ -654,10 +882,7 @@ local function SetBoost(on)
 end
 
 --==================================================
--- TRACKING (SPECTATE / FOLLOW) — แก้ใหม่ให้ไม่แลค
---   Spectate: ใช้อีเวนต์ล้วน ไม่มีลูปทุกเฟรม
---   Follow  : ตั้งตำแหน่งตอน RenderStepped (ตรงกับภาพที่เห็น) + ปิดชน/ล้างความเร็วตอน Stepped
---             เก็บ reference ไว้ ไม่ FindFirstChild ซ้ำทุกเฟรม และไม่สร้าง CFrame ใหม่ทุกเฟรม
+-- TRACKING
 --==================================================
 local function SetOpt(id, v)
     local o = Fluent.Options[id]
@@ -668,7 +893,6 @@ local Tracking = { Spec = nil, Follow = nil, Dist = 1, Height = 0.2 }
 local followOffset = CFrame.new(0, Tracking.Height, Tracking.Dist)
 local function UpdateOffset() followOffset = CFrame.new(0, Tracking.Height, Tracking.Dist) end
 
--- ---------- Spectate ----------
 local specConns = {}
 
 local function SpecApply()
@@ -693,11 +917,9 @@ local function StartSpectate(plr)
     for _, c in ipairs(specConns) do c:Disconnect() end
     table.clear(specConns)
     Tracking.Spec = plr
-
     local function hookCam()
         local cam = workspace.CurrentCamera
         if cam then
-            -- เกมดึงกล้องกลับ -> ตั้งใหม่ทันที (ทำงานเฉพาะตอนมีการเปลี่ยนจริง)
             table.insert(specConns, cam:GetPropertyChangedSignal("CameraSubject"):Connect(SpecApply))
         end
     end
@@ -706,7 +928,6 @@ local function StartSpectate(plr)
         hookCam()
         SpecApply()
     end))
-    -- เป้าหมายเกิดใหม่ -> ย้ายกล้องไปตัวใหม่
     table.insert(specConns, plr.CharacterAdded:Connect(function(char)
         task.spawn(function()
             char:WaitForChild("Humanoid", 5)
@@ -716,23 +937,26 @@ local function StartSpectate(plr)
     SpecApply()
 end
 
--- ---------- Follow ----------
 local followConns = {}
-local fTRoot, fRoot, fHum              -- reference ที่แคชไว้
-local fParts, fChar = {}, nil          -- ชิ้นส่วนที่ต้องปิดการชน (เฉพาะชิ้นที่ชนอยู่จริง ~4 ชิ้น)
 
-local function CacheParts(char)
-    fChar, fParts = char, {}
-    for _, p in ipairs(char:GetDescendants()) do
-        if p:IsA("BasePart") and p.CanCollide then table.insert(fParts, p) end
-    end
+local function GetTargetRoot(ch)
+    if not ch then return nil end
+    return ch:FindFirstChild("HumanoidRootPart") or ch.PrimaryPart
+        or ch:FindFirstChild("UpperTorso") or ch:FindFirstChild("Torso") or ch:FindFirstChild("Head")
 end
 
-local function RestoreCollide()
-    for _, p in ipairs(fParts) do
-        if p.Parent then p.CanCollide = true end
-    end
-    fParts, fChar = {}, nil
+local function StickStep()
+    local target = Tracking.Follow
+    if not target then return end
+    local tRoot = GetTargetRoot(target.Character)
+    local char = LP.Character
+    local root = char and char:FindFirstChild("HumanoidRootPart")
+    if not (tRoot and tRoot:IsA("BasePart") and root) then return end
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if hum and not hum.PlatformStand then hum.PlatformStand = true end
+    root.CFrame = tRoot.CFrame * followOffset
+    root.AssemblyLinearVelocity = Vector3.zero
+    root.AssemblyAngularVelocity = Vector3.zero
 end
 
 local function StopFollow()
@@ -740,9 +964,8 @@ local function StopFollow()
     Tracking.Follow = nil
     for _, c in ipairs(followConns) do c:Disconnect() end
     table.clear(followConns)
-    fTRoot, fRoot, fHum = nil, nil, nil
-    if not was then return end -- ไม่ได้ตามอยู่ ก็ไม่ไปแตะตัวละคร (กันชนกับระบบบิน)
-    RestoreCollide()
+    if not was then return end
+    ClipRelease("follow")
     local hum = GetHumanoid()
     if hum then
         hum.PlatformStand = false
@@ -751,50 +974,24 @@ local function StopFollow()
 end
 
 local function StartFollow(plr)
-    if Flying then -- ไม่ให้ชนกับระบบบิน
-        StopFly()
-        SetOpt("FlyToggle", false)
-    end
+    if Flying then StopFly() SetOpt("FlyToggle", false) end
+    if Settings.SpinOn then SetOpt("SpinToggle", false) end
     Tracking.Follow = plr
-    fTRoot = nil -- บังคับหา root ของเป้าหมายใหม่
-    if #followConns > 0 then return end -- ใช้ connection เดิม แค่เปลี่ยนเป้าหมาย
-
-    -- ก่อนฟิสิกส์: ปิดการชน + ล้างความเร็ว (Humanoid เปิดการชนกลับทุกสเต็ป)
-    table.insert(followConns, RunService.Stepped:Connect(function()
-        if not (fRoot and fRoot.Parent) then return end
-        for _, p in ipairs(fParts) do
-            if p.CanCollide then p.CanCollide = false end
-        end
-        fRoot.AssemblyLinearVelocity = Vector3.zero
-        fRoot.AssemblyAngularVelocity = Vector3.zero
-    end))
-
-    -- ก่อนวาดภาพ: วางตัวเราติดหลังเป้าหมายตามตำแหน่งที่เห็นอยู่ตอนนั้นพอดี
-    table.insert(followConns, RunService.RenderStepped:Connect(function()
+    if #followConns > 0 then return end
+    ClipAcquire("follow")
+    table.insert(followConns, RunService.Heartbeat:Connect(function()
         local target = Tracking.Follow
-        if not target then return end
-
-        if not (fTRoot and fTRoot.Parent) then
-            local ch = target.Character
-            fTRoot = ch and ch:FindFirstChild("HumanoidRootPart")
-            if not fTRoot then return end -- รอเป้าหมายเกิดใหม่
+        if target and target.Parent ~= Players then
+            StopFollow()
+            SetOpt("FollowToggle", false)
+            Note(T("fol_t"), T("n_fol_left"))
+            return
         end
-
-        local char = LP.Character
-        if not char then return end
-        if char ~= fChar or not (fRoot and fRoot.Parent) then
-            fRoot = char:FindFirstChild("HumanoidRootPart")
-            fHum = char:FindFirstChildOfClass("Humanoid")
-            if not fRoot then return end -- รอเราเกิดใหม่
-            CacheParts(char)
-        end
-
-        if fHum and not fHum.PlatformStand then fHum.PlatformStand = true end
-        fRoot.CFrame = fTRoot.CFrame * followOffset -- Z บวก = ด้านหลังเป้าหมาย (หันไปทางเดียวกับเขา)
+        StickStep()
     end))
+    table.insert(followConns, RunService.RenderStepped:Connect(StickStep))
 end
 
--- เป้าหมายออกจากเซิร์ฟ: ใช้อีเวนต์เดียว แทนการเช็กทุกเฟรม
 Track(Players.PlayerRemoving:Connect(function(p)
     if p == Tracking.Spec then
         StopSpectate()
@@ -809,25 +1006,31 @@ Track(Players.PlayerRemoving:Connect(function(p)
 end))
 
 --==================================================
--- CLEANUP + MAIN LOOP (ลดความถี่: stats 10 ครั้ง/วิ, visual 2 ครั้ง/วิ, ESP 5 ครั้ง/วิ)
+-- MAIN LOOP
 --==================================================
 local loop
-local accStats, accVis = 0, 0
+local accStats, accVis, accSafe = 0, 0, 0
 loop = RunService.Heartbeat:Connect(function(dt)
     if not Fluent.Unloaded then
         accStats += dt
-        if accStats >= 0.1 then accStats = 0 ApplyStats() end
+        if accStats >= 0.1 then accStats = 0 ApplyStats() ApplySpin() end
         accVis += dt
         if accVis >= 0.5 then accVis = 0 ApplyVisuals() end
+        accSafe += dt
+        if accSafe >= 0.25 then accSafe = 0 SafetyTick() end
         UpdateESP()
         return
     end
-
     loop:Disconnect()
     ClearESP()
     StopFly()
     StopSpectate()
     StopFollow()
+    Settings.SpinOn, Settings.NoclipOn, Settings.WaterOn = false, false, false
+    StopSpin()
+    ClipRelease("noclip")
+    StopWater()
+    ApplyZoom(false)
     Settings.WalkOn, Settings.JumpOn, Settings.BrightOn, Settings.NoFog = false, false, false, false
     RestoreWalk()
     RestoreJump()
@@ -844,15 +1047,16 @@ end)
 -- UI
 --==================================================
 local Window = Fluent:CreateWindow({
-    Title = "DARK HUB", SubTitle = "ESP  •  Tracking  •  Fly  •  Movement", TabWidth = 160,
-    Size = UDim2.fromOffset(580, 460), Acrylic = true, Theme = "Dark",
+    Title = "DARK HUB", SubTitle = "Movement  •  Players  •  Visual  •  Utility", TabWidth = 160,
+    Size = UDim2.fromOffset(600, 480), Acrylic = true, Theme = "Dark",
     MinimizeKey = Enum.KeyCode.LeftControl,
 })
 
 local Tabs = {
-    Teleport = Window:AddTab({ Title = T("tab_tp"), Icon = "map-pin" }),
-    ESP = Window:AddTab({ Title = T("tab_esp"), Icon = "eye" }),
-    Main = Window:AddTab({ Title = T("tab_main"), Icon = "zap" }),
+    Move = Window:AddTab({ Title = T("tab_move"), Icon = "zap" }),
+    Players = Window:AddTab({ Title = T("tab_players"), Icon = "users" }),
+    Visual = Window:AddTab({ Title = T("tab_visual"), Icon = "eye" }),
+    Util = Window:AddTab({ Title = T("tab_util"), Icon = "wrench" }),
     Settings = Window:AddTab({ Title = T("tab_settings"), Icon = "settings" }),
 }
 
@@ -870,11 +1074,9 @@ local function AddSlider(sec, id, title, desc, default, min, max, fn)
     return s
 end
 
--- สลับภาษาแบบสด: ไล่แทนข้อความที่ตรงกับภาษาเดิมในหน้าต่าง Fluent (ไม่ต้องสร้างเมนูใหม่)
 local function SwapText(oldLang, newLang)
     local ok, root = pcall(function() return Fluent.GUI or Window.Root end)
     if not (ok and root) then return false end
-
     local rev, to = REV[oldLang], STR[newLang]
     task.spawn(function()
         local slice = Slicer()
@@ -889,116 +1091,191 @@ local function SwapText(oldLang, newLang)
     return true
 end
 
-do -- TELEPORT
-    local sec = Tabs.Teleport:AddSection(T("sec_tp"))
-    local TPMap, TPDrop = {}, nil
+--==================================================
+-- TAB 1: MOVEMENT
+--==================================================
+do
+    local sec = Tabs.Move:AddSection(T("sec_fly"))
+    local toggle
+    toggle = AddToggle(sec, "FlyToggle", T("fly_t"), T("fly_d"), false, function(on)
+        if on then
+            if Tracking.Follow then StopFollow() SetOpt("FollowToggle", false) end
+            if not Flying and not StartFly() then toggle:SetValue(false) end
+        elseif Flying then
+            StopFly()
+        end
+    end)
+    AddSlider(sec, "FlySpeed", T("flyspd_t"), T("lvl16_d"), Settings.FlySpeed, 1, MAX_LEVEL,
+        function(v) Settings.FlySpeed = Level(v) end)
+end
 
-    local function BuildList()
-        table.clear(TPMap)
+do
+    local sec = Tabs.Move:AddSection(T("sec_speed"))
+    AddToggle(sec, "WalkToggle", T("walk_t"), T("walk_d"), false, function(on)
+        Settings.WalkOn = on
+        if not on then RestoreWalk() else ApplyStats() end
+    end)
+    AddSlider(sec, "WalkLevel", T("walklv_t"), T("lvl16_d"), 1, 1, MAX_LEVEL,
+        function(v) Settings.WalkLevel = Level(v) ApplyStats() end)
+    AddToggle(sec, "JumpToggle", T("jump_t"), T("jump_d"), false, function(on)
+        Settings.JumpOn = on
+        if not on then RestoreJump() else ApplyStats() end
+    end)
+    AddSlider(sec, "JumpLevel", T("jumplv_t"), T("lvl50_d"), 1, 1, MAX_LEVEL,
+        function(v) Settings.JumpLevel = Level(v) ApplyStats() end)
+    AddToggle(sec, "InfJumpToggle", T("infjump_t"), T("infjump_d"), false, function(on)
+        Settings.InfJump = on
+    end)
+end
+
+do
+    local sec = Tabs.Move:AddSection(T("sec_special"))
+    AddToggle(sec, "NoclipToggle", T("noclip_t"), T("noclip_d"), false, function(on)
+        Settings.NoclipOn = on
+        if on then ClipAcquire("noclip") else ClipRelease("noclip") end
+    end)
+    AddToggle(sec, "WaterToggle", T("water_t"), T("water_d"), false, function(on)
+        Settings.WaterOn = on
+        if on then StartWater() else StopWater() end
+    end)
+end
+
+do
+    local sec = Tabs.Move:AddSection(T("sec_spin"))
+    AddToggle(sec, "SpinToggle", T("spin_t"), T("spin_d"), false, function(on)
+        Settings.SpinOn = on
+        if on then
+            if Tracking.Follow then StopFollow() SetOpt("FollowToggle", false) end
+            ApplySpin()
+        else
+            StopSpin()
+        end
+    end)
+    AddSlider(sec, "SpinLevel", T("spinlv_t"), T("lvlspin_d"), Settings.SpinLevel, 1, MAX_LEVEL,
+        function(v) Settings.SpinLevel = Level(v) ApplySpin() end)
+    AddToggle(sec, "SpinReverse", T("spinrev_t"), T("spinrev_d"), false, function(on)
+        Settings.SpinReverse = on
+        ApplySpin()
+    end)
+end
+
+do
+    local sec = Tabs.Move:AddSection(T("sec_safety"))
+    AddToggle(sec, "VoidToggle", T("void_t"), T("void_d"), Settings.AntiVoid, function(on)
+        Settings.AntiVoid = on
+    end)
+end
+
+--==================================================
+-- TAB 2: PLAYERS
+--==================================================
+local function MakePicker(sec, id, title, desc, onSwitch)
+    local map, drop, query = {}, nil, ""
+    local function Build()
+        table.clear(map)
         local labels = {}
         for _, plr in ipairs(Players:GetPlayers()) do
-            if plr ~= LP then
-                local label = string.format("%s (@%s)", plr.DisplayName, plr.Name)
-                TPMap[label] = plr
-                table.insert(labels, label)
+            if plr ~= LP and (query == ""
+                or plr.DisplayName:lower():find(query, 1, true)
+                or plr.Name:lower():find(query, 1, true)) then
+                local l = string.format("%s (@%s)", plr.DisplayName, plr.Name)
+                map[l] = plr
+                table.insert(labels, l)
             end
         end
         table.sort(labels)
-        return #labels > 0 and labels or { T("no_players") }
+        if #labels == 0 then labels = { T(query == "" and "no_players" or "no_match") } end
+        return labels
     end
-
-    local function Refresh(silent)
-        local labels = BuildList()
-        TPDrop:SetValues(labels)
-        if not TPMap[TPDrop.Value] then TPDrop:SetValue(labels[1]) end
-        if not silent then
-            Note(T("tab_tp"), T("n_tp_list", math.max(#Players:GetPlayers() - 1, 0)), 3)
-        end
-    end
-    table.insert(LangHooks, function() Refresh(true) end)
-
-    TPDrop = sec:AddDropdown("TPPlayer", {
-        Title = T("tp_sel_t"), Description = T("tp_sel_d"), Values = BuildList(), Default = 1,
+    local input = sec:AddInput(id .. "Search", {
+        Title = T("search_t"), Description = T("search_d"),
+        Default = "", Placeholder = "Name / @username", Numeric = false, Finished = false,
     })
+    drop = sec:AddDropdown(id, { Title = title, Description = desc, Values = Build(), Default = 1 })
+    drop:OnChanged(function() onSwitch(map[drop.Value]) end)
+    local function Rebuild()
+        local labels = Build()
+        drop:SetValues(labels)
+        if not map[drop.Value] then drop:SetValue(labels[1]) end
+    end
+    table.insert(LangHooks, Rebuild)
+    local pending = false
+    local function Schedule(delay)
+        if pending then return end
+        pending = true
+        task.delay(delay, function()
+            pending = false
+            if not Fluent.Unloaded then Rebuild() end
+        end)
+    end
+    input:OnChanged(function(v)
+        local q = tostring(v or ""):lower()
+        q = q:gsub("^%s+", ""):gsub("%s+$", ""):gsub("^@", "")
+        query = q
+        Schedule(0.2)
+    end)
+    Track(Players.PlayerAdded:Connect(function() Schedule(0.3) end))
+    Track(Players.PlayerRemoving:Connect(function() Schedule(0.3) end))
+    return function() return map[drop.Value] end, Rebuild
+end
 
+do
+    local sec = Tabs.Players:AddSection(T("sec_tp"))
+    local GetTP, RebuildTP = MakePicker(sec, "TPPlayer", T("tp_sel_t"), T("tp_sel_d"), function() end)
     sec:AddButton({
         Title = T("tp_go_t"), Description = T("tp_go_d"),
         Callback = function()
-            local target = TPMap[TPDrop.Value]
-            if not target or target.Parent ~= Players then
-                Refresh(true)
-                return Note(T("tab_tp"), T("n_tp_missing"))
-            end
-
+            local target = GetTP()
+            if not target or target.Parent ~= Players then RebuildTP() return Note(T("nt_tp"), T("n_tp_missing")) end
             local head = target.Character and target.Character:FindFirstChild("Head")
-            local root = LP.Character and LP.Character:FindFirstChild("HumanoidRootPart")
-            if not (head and root) then
-                return Note(T("tab_tp"), T("n_tp_notready"))
-            end
-
+            local root = GetRoot()
+            if not (head and root) then return Note(T("nt_tp"), T("n_tp_notready")) end
             root.AssemblyLinearVelocity = Vector3.zero
             root.CFrame = CFrame.new(head.Position + Vector3.new(0, 4, 0))
         end,
     })
-
     sec:AddButton({
         Title = T("tp_rst_t"), Description = T("tp_rst_d"),
-        Callback = function() Refresh(false) end,
+        Callback = function()
+            RebuildTP()
+            Note(T("nt_tp"), T("n_tp_list", math.max(#Players:GetPlayers() - 1, 0)), 3)
+        end,
     })
 end
 
-do -- SPECTATE + FOLLOW (ระบบเลือกผู้เล่นแยกจาก TP และแยกจากกันเอง)
-    -- dropdown รายชื่อชุดใหม่ อัปเดตเองเมื่อมีคนเข้า/ออก คืนค่าเป็นฟังก์ชันดึงผู้เล่นที่เลือกอยู่
-    local function MakePicker(sec, id, title, desc, onSwitch)
-        local map, drop = {}, nil
-
-        local function Build()
-            table.clear(map)
-            local labels = {}
-            for _, plr in ipairs(Players:GetPlayers()) do
-                if plr ~= LP then
-                    local l = string.format("%s (@%s)", plr.DisplayName, plr.Name)
-                    map[l] = plr
-                    table.insert(labels, l)
-                end
+do
+    local sec = Tabs.Players:AddSection(T("sec_quick"))
+    local savedCF
+    AddToggle(sec, "ClickTPToggle", T("clicktp_t"), T("clicktp_d"), false, function(on)
+        Settings.ClickTP = on
+    end)
+    sec:AddButton({
+        Title = T("savepos_t"), Description = T("savepos_d"),
+        Callback = function()
+            local root = GetRoot()
+            if root then savedCF = root.CFrame Note(T("nt_tp"), T("n_pos_saved"), 3) end
+        end,
+    })
+    sec:AddButton({
+        Title = T("gopos_t"), Description = T("gopos_d"),
+        Callback = function()
+            local root = GetRoot()
+            if not savedCF then return Note(T("nt_tp"), T("n_pos_none"), 3) end
+            if root then
+                root.AssemblyLinearVelocity = Vector3.zero
+                root.CFrame = savedCF
             end
-            table.sort(labels)
-            return #labels > 0 and labels or { T("no_players") }
-        end
+        end,
+    })
+end
 
-        drop = sec:AddDropdown(id, { Title = title, Description = desc, Values = Build(), Default = 1 })
-        drop:OnChanged(function() onSwitch(map[drop.Value]) end)
-
-        local function Rebuild()
-            local labels = Build()
-            drop:SetValues(labels)
-            if not map[drop.Value] then drop:SetValue(labels[1]) end
-        end
-        table.insert(LangHooks, Rebuild)
-
-        local pending = false
-        local function Schedule()
-            if pending then return end
-            pending = true
-            task.delay(0.3, function() -- รวมหลายอีเวนต์ติดกันให้เหลือรอบเดียว
-                pending = false
-                if not Fluent.Unloaded then Rebuild() end
-            end)
-        end
-        Track(Players.PlayerAdded:Connect(Schedule))
-        Track(Players.PlayerRemoving:Connect(Schedule))
-
-        return function() return map[drop.Value] end
-    end
-
-    -- ---------- SPECTATE ----------
-    local specSec = Tabs.Teleport:AddSection(T("sec_spec"))
+do
+    local specSec = Tabs.Players:AddSection(T("sec_spec"))
     local specToggle
     local GetSpec = MakePicker(specSec, "SpecPlayer", T("spec_pick_t"), T("spec_pick_d"),
         function(plr)
-            if specToggle and specToggle.Value and plr then StartSpectate(plr) end -- สลับเป้าหมายระหว่างดู
+            if specToggle and specToggle.Value and plr then StartSpectate(plr) end
         end)
-
     specToggle = AddToggle(specSec, "SpecToggle", T("spec_t"), T("spec_d"), false, function(on)
         if on then
             local plr = GetSpec()
@@ -1014,14 +1291,12 @@ do -- SPECTATE + FOLLOW (ระบบเลือกผู้เล่นแย�
         end
     end)
 
-    -- ---------- FOLLOW ----------
-    local folSec = Tabs.Teleport:AddSection(T("sec_fol"))
+    local folSec = Tabs.Players:AddSection(T("sec_fol"))
     local folToggle
     local GetFol = MakePicker(folSec, "FollowPlayer", T("fol_pick_t"), T("fol_pick_d"),
         function(plr)
             if folToggle and folToggle.Value and plr then StartFollow(plr) end
         end)
-
     folToggle = AddToggle(folSec, "FollowToggle", T("fol_t"), T("fol_d"), false, function(on)
         if on then
             local plr = GetFol()
@@ -1036,7 +1311,6 @@ do -- SPECTATE + FOLLOW (ระบบเลือกผู้เล่นแย�
             StopFollow()
         end
     end)
-
     folSec:AddSlider("FollowDist", {
         Title = T("fol_dist_t"), Description = T("fol_dist_d"),
         Default = Tracking.Dist, Min = 0, Max = 30, Rounding = 1,
@@ -1045,7 +1319,6 @@ do -- SPECTATE + FOLLOW (ระบบเลือกผู้เล่นแย�
         Title = T("fol_h_t"), Description = T("fol_h_d"),
         Default = Tracking.Height, Min = -5, Max = 15, Rounding = 1,
     }):OnChanged(function(v) Tracking.Height = v UpdateOffset() end)
-
     folSec:AddButton({
         Title = T("trk_stop_t"), Description = T("trk_stop_d"),
         Callback = function()
@@ -1058,9 +1331,12 @@ do -- SPECTATE + FOLLOW (ระบบเลือกผู้เล่นแย�
     })
 end
 
-do -- ESP (แยกหมวด: ผู้เล่น / ไอเท็ม  แต่ละหมวด = เปิด ESP -> แสดงข้อมูล -> สี)
+--==================================================
+-- TAB 3: VISUAL
+--==================================================
+do
     local function BuildESP(kind)
-        local sec = Tabs.ESP:AddSection(T("sec_" .. kind))
+        local sec = Tabs.Visual:AddSection(T("sec_" .. kind))
         AddToggle(sec, "ESP" .. kind, T("esp_" .. kind .. "_t"), T("esp_" .. kind .. "_d"), false, function(v) SetCat(kind, v) end)
         AddToggle(sec, "Info" .. kind, T("info_" .. kind .. "_t"), T("info_" .. kind .. "_d"), true, function(v) Cats[kind].info = v end)
         local picker = sec:AddColorpicker("Color" .. kind, {
@@ -1068,63 +1344,27 @@ do -- ESP (แยกหมวด: ผู้เล่น / ไอเท็ม  �
         })
         picker:OnChanged(function() Cats[kind].color = picker.Value end)
     end
-
     BuildESP("Player")
     BuildESP("Item")
 end
 
-do -- FLY
-    local sec = Tabs.Main:AddSection(T("sec_fly"))
-    local toggle
-    toggle = AddToggle(sec, "FlyToggle", T("fly_t"), T("fly_d"), false, function(on)
-        if on then
-            if Tracking.Follow then -- ไม่ให้ชนกับระบบ Follow
-                StopFollow()
-                SetOpt("FollowToggle", false)
-            end
-            if not Flying and not StartFly() then toggle:SetValue(false) end
-        elseif Flying then
-            StopFly()
-        end
-    end)
-    AddSlider(sec, "FlySpeed", T("flyspd_t"), T("lvl16_d"), Settings.FlySpeed, 1, MAX_LEVEL,
-        function(v) Settings.FlySpeed = Level(v) end)
-end
-
-do -- MOVEMENT
-    local sec = Tabs.Main:AddSection(T("sec_move"))
-
-    AddToggle(sec, "WalkToggle", T("walk_t"), T("walk_d"), false, function(on)
-        Settings.WalkOn = on
-        if not on then RestoreWalk() else ApplyStats() end
-    end)
-    AddSlider(sec, "WalkLevel", T("walklv_t"), T("lvl16_d"), 1, 1, MAX_LEVEL,
-        function(v) Settings.WalkLevel = Level(v) ApplyStats() end)
-
-    AddToggle(sec, "JumpToggle", T("jump_t"), T("jump_d"), false, function(on)
-        Settings.JumpOn = on
-        if not on then RestoreJump() else ApplyStats() end
-    end)
-    AddSlider(sec, "JumpLevel", T("jumplv_t"), T("lvl50_d"), 1, 1, MAX_LEVEL,
-        function(v) Settings.JumpLevel = Level(v) ApplyStats() end)
-end
-
-do -- VISUAL
-    local sec = Tabs.Main:AddSection(T("sec_vis"))
-
+do
+    local sec = Tabs.Visual:AddSection(T("sec_light"))
     AddToggle(sec, "BrightToggle", T("bright_t"), T("bright_d"), false, function(on)
         Settings.BrightOn = on
-        if not on then Restore(BrightProps) else ApplyVisuals() end
+        if not on then Restore(BrightProps) else ApplyBrightnessOnly() end
     end)
     AddSlider(sec, "BrightLevel", T("light_t"), T("light_d"),
         Settings.BrightLevel, 1, 10,
-        function(v) Settings.BrightLevel = math.clamp(math.floor(v + 0.5), 1, 10) ApplyVisuals() end)
-
+        function(v) Settings.BrightLevel = math.clamp(math.floor(v + 0.5), 1, 10) ApplyBrightnessOnly() end)
     AddToggle(sec, "FogToggle", T("fog_t"), T("fog_d"), false, function(on)
         Settings.NoFog = on
         if not on then RestoreFog() else ApplyVisuals() end
     end)
+end
 
+do
+    local sec = Tabs.Visual:AddSection(T("sec_perf"))
     AddToggle(sec, "BoostToggle", T("boost_t"), T("boost_d"), false, function(on)
         Settings.Boost = on
         SetBoost(on)
@@ -1132,7 +1372,48 @@ do -- VISUAL
     end)
 end
 
-do -- LANGUAGE (หน้า Settings)
+--==================================================
+-- TAB 4: UTILITY
+--==================================================
+do
+    local sec = Tabs.Util:AddSection(T("sec_cam"))
+    AddToggle(sec, "ZoomToggle", T("zoom_t"), T("zoom_d"), false, function(on)
+        Settings.Zoom = on
+        ApplyZoom(on)
+    end)
+end
+
+do
+    local sec = Tabs.Util:AddSection(T("sec_sess"))
+    AddToggle(sec, "AFKToggle", T("afk_t"), T("afk_d"), Settings.AntiAFK, function(on)
+        Settings.AntiAFK = on
+    end)
+    sec:AddButton({
+        Title = T("respawn_t"), Description = T("respawn_d"),
+        Callback = function()
+            local hum = GetHumanoid()
+            if hum then hum.Health = 0 end
+        end,
+    })
+    sec:AddButton({
+        Title = T("rejoin_t"), Description = T("rejoin_d"),
+        Callback = function()
+            Note("DARK HUB", T("n_rejoin"), 3)
+            pcall(function()
+                if #Players:GetPlayers() <= 1 then
+                    TeleportService:Teleport(game.PlaceId, LP)
+                else
+                    TeleportService:TeleportToPlaceInstance(game.PlaceId, game.JobId, LP)
+                end
+            end)
+        end,
+    })
+end
+
+--==================================================
+-- TAB 5: SETTINGS
+--==================================================
+do
     local sec = Tabs.Settings:AddSection(T("sec_lang"))
     local drop = sec:AddDropdown("Language", {
         Title = T("lang_t"), Description = T("lang_d"),
@@ -1144,28 +1425,28 @@ do -- LANGUAGE (หน้า Settings)
         local old = Lang
         Lang = new
         SaveLang()
-        for _, fn in ipairs(LangHooks) do pcall(fn) end -- สร้างรายชื่อผู้เล่นใหม่ตามภาษา
+        for _, fn in ipairs(LangHooks) do pcall(fn) end
         local ok = SwapText(old, new)
         Note("DARK HUB", T(ok and "n_lang" or "n_lang_restart"), 3)
     end)
 end
 
---==================================================
--- SAVE / INTERFACE MANAGER (ช่อง Theme ในนี้เลือกได้แค่ Dark / Light)
---==================================================
 SaveManager:SetLibrary(Fluent)
 InterfaceManager:SetLibrary(Fluent)
 SaveManager:IgnoreThemeSettings()
-SaveManager:SetIgnoreIndexes({ "FlyToggle", "TPPlayer", "SpecToggle", "SpecPlayer", "FollowToggle", "FollowPlayer", "Language" })
+SaveManager:SetIgnoreIndexes({
+    "FlyToggle", "NoclipToggle", "WaterToggle", "SpinToggle", "ClickTPToggle",
+    "TPPlayer", "SpecToggle", "SpecPlayer", "FollowToggle", "FollowPlayer", "Language",
+    "TPPlayerSearch", "SpecPlayerSearch", "FollowPlayerSearch",
+})
 
 InterfaceManager:SetFolder("DarkHub")
 SaveManager:SetFolder("DarkHub/configs")
 
-do -- INTERFACE: เหลือแค่ Theme + ปุ่มเปิด/ปิดเมนู (ตัด Acrylic / Transparency ออก)
+do
     pcall(function() InterfaceManager:LoadSettings() end)
     local S = InterfaceManager.Settings or {}
     local sec = Tabs.Settings:AddSection(T("sec_iface"))
-
     local themeDrop = sec:AddDropdown("InterfaceTheme", {
         Title = T("theme_t"), Description = T("theme_d"), Values = Fluent.Themes,
         Default = table.find(Fluent.Themes, S.Theme or "Dark") or 1,
@@ -1175,15 +1456,22 @@ do -- INTERFACE: เหลือแค่ Theme + ปุ่มเปิด/ป�
         S.Theme = v
         pcall(function() InterfaceManager:SaveSettings() end)
     end)
-
-    -- Ctrl ซ้าย = เปิด/ปิดเมนู เหมือนเดิม (เปลี่ยนปุ่มได้ แต่ไม่จำค่า เปิดใหม่กลับเป็น Ctrl เสมอ)
     local key = sec:AddKeybind("MenuKeybind", { Title = T("menukey_t"), Default = "LeftControl", Mode = "Toggle" })
     Fluent.MinimizeKeybind = key
 end
 
+-- ❌ ลบ section HOTKEYS ทั้งบล็อก (Fly = F / Noclip = N) ออกตามคำขอ
+
 SaveManager:BuildConfigSection(Tabs.Settings)
 
--- ทำพื้นหลังธีม Dark ให้ดำสนิทขึ้น โดยไม่เปลี่ยนสีส่วนอื่นของ UI
+do
+    local sec = Tabs.Settings:AddSection(T("sec_script"))
+    sec:AddButton({
+        Title = T("unload_t"), Description = T("unload_d"),
+        Callback = function() Fluent:Destroy() end,
+    })
+end
+
 pcall(function()
     if Fluent.Options.TransparentToggle then
         Fluent.Options.TransparentToggle:SetValue(false)
@@ -1215,33 +1503,27 @@ Note("DARK HUB", T("n_loaded"), 5)
 SaveManager:LoadAutoloadConfig()
 
 --==================================================
--- MINIMIZE ICON (ปุ่มกลม "D" ตอนย่อเมนู กดเพื่อเปิดกลับ ลากย้ายได้)
--- ธีม Dark = พื้นดำ ตัวขาว / ธีม Light = พื้นขาว ตัวดำ
+-- MINIMIZE ICON
 --==================================================
 do
     local Gui = New("ScreenGui", { Name = "DarkHubIcon", ResetOnSpawn = false, DisplayOrder = 999, ZIndexBehavior = Enum.ZIndexBehavior.Sibling })
     if not pcall(function() Gui.Parent = (gethui and gethui()) or game:GetService("CoreGui") end) then
         Gui.Parent = LP:WaitForChild("PlayerGui")
     end
-
     local Btn = New("TextButton", {
         Name = "Icon", Size = UDim2.fromOffset(52, 52), Position = UDim2.new(0, 24, 0.5, -26),
         AutoButtonColor = false, Text = "D", Font = Enum.Font.GothamBold, TextSize = 28, Visible = false,
     }, Gui)
     New("UICorner", { CornerRadius = UDim.new(1, 0) }, Btn)
     local Stroke = New("UIStroke", { Thickness = 2 }, Btn)
-
     local function IsPointer(i, move)
         local t = i.UserInputType
         return t == Enum.UserInputType.Touch or t == (move and Enum.UserInputType.MouseMovement or Enum.UserInputType.MouseButton1)
     end
-
     local dragging, moved, dragStart, startPos = false, false, nil, nil
-
     Track(Btn.InputBegan:Connect(function(i)
         if IsPointer(i) then dragging, moved, dragStart, startPos = true, false, i.Position, Btn.Position end
     end))
-
     Track(UIS.InputChanged:Connect(function(i)
         if not (dragging and IsPointer(i, true)) then return end
         local d = i.Position - dragStart
@@ -1250,21 +1532,18 @@ do
             Btn.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + d.X, startPos.Y.Scale, startPos.Y.Offset + d.Y)
         end
     end))
-
     Track(UIS.InputEnded:Connect(function(i)
         if not (dragging and IsPointer(i)) then return end
         dragging = false
         if not moved then Window:Minimize() end
     end))
-
     task.spawn(function()
         local lastTheme, lastVis
         while not Fluent.Unloaded do
             local vis = Window.Minimized == true
             if vis ~= lastVis then Btn.Visible = vis lastVis = vis end
-
             local theme = Fluent.Theme
-            if theme ~= lastTheme then -- เปลี่ยนสีเฉพาะตอนธีมเปลี่ยน
+            if theme ~= lastTheme then
                 lastTheme = theme
                 local light = theme == "Light"
                 local bg, fg = light and C(245, 247, 250) or C(3, 3, 3), light and C(20, 20, 22) or C(255, 255, 255)
