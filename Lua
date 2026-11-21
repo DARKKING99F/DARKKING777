@@ -1,9 +1,17 @@
+-- ============================================================
+-- DARK HUB — v3.5
+-- Fixes: Freecam v2 (free look on PC / mobile / gamepad), freecam vs walk-speed fight,
+--        freecam on respawn, Freecam now fully locks your character (anchored)
+-- Tier 1:  Waypoints (persistent), Freecam, Info HUD (draggable), Anti-Fling
+-- HUD v2:   Draggable, styled, colored per-status
+-- ============================================================
 local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
 local SaveManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/SaveManager.lua"))()
 local InterfaceManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/InterfaceManager.lua"))()
 
 local Players, RunService, UIS = game:GetService("Players"), game:GetService("RunService"), game:GetService("UserInputService")
 local Lighting, TeleportService = game:GetService("Lighting"), game:GetService("TeleportService")
+local Stats = game:GetService("Stats")
 local LP, C = Players.LocalPlayer, Color3.fromRGB
 
 local function New(class, props, parent)
@@ -13,20 +21,94 @@ local function New(class, props, parent)
     return o
 end
 
--- ตัวแบ่งเฟรม: ทำงานหนักได้ไม่เกิน ~4ms ต่อเฟรม แล้วพักให้เกมวาดภาพ (กันค้างตอนสแกน)
 local function Slicer(budget)
     budget = budget or 0.004
     local t = os.clock()
     return function()
-        if os.clock() - t > budget then
-            task.wait()
-            t = os.clock()
+        if os.clock() - t > budget then task.wait() t = os.clock() end
+    end
+end
+
+local function WalkTree(root, cb, slice)
+    if not root then return end
+    slice = slice or Slicer()
+    local queue, n = { root }, 1
+    while n > 0 do
+        local cur = queue[n]; queue[n] = nil; n -= 1
+        local ok, kids = pcall(function() return cur:GetChildren() end)
+        if ok and kids then
+            for i = 1, #kids do
+                local k = kids[i]
+                local okCall, stop = pcall(cb, k)
+                if okCall and stop then return end
+                n += 1; queue[n] = k; slice()
+            end
         end
     end
 end
 
 --==================================================
--- LANGUAGE (default = English / จำภาษาที่เลือกไว้ในไฟล์ DarkHub/lang.txt)
+-- WAYPOINT PERSISTENCE
+--==================================================
+local WP_FILE = "DarkHub/waypoints.txt"
+local Waypoints, WaypointNames = {}, {}
+
+local function SerializeCF(cf)
+    local p, r00, r01, r02, r10, r11, r12, r20, r21, r22 = cf:GetComponents()
+    return string.format("%.4f,%.4f,%.4f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f",
+        p.X, p.Y, p.Z, r00, r01, r02, r10, r11, r12, r20, r21, r22)
+end
+
+local function DeserializeCF(s)
+    local parts = {}
+    for num in s:gmatch("[^,]+") do parts[#parts+1] = tonumber(num) end
+    if #parts < 12 then return nil end
+    local ok, cf = pcall(CFrame.new,
+        parts[1], parts[2], parts[3],
+        parts[4], parts[5], parts[6],
+        parts[7], parts[8], parts[9],
+        parts[10], parts[11], parts[12])
+    if ok then return cf end
+end
+
+local function SanitizeName(s) return (tostring(s or ""):gsub("[|\n\r]", " ")) end
+
+local function SaveWaypointsToFile()
+    pcall(function()
+        if not writefile then return end
+        if makefolder and isfolder and not isfolder("DarkHub") then makefolder("DarkHub") end
+        local lines = {}
+        for i = 1, 5 do
+            local wp = Waypoints[i]
+            if wp then
+                lines[#lines+1] = i .. "|" .. SanitizeName(WaypointNames[i] or ("Slot " .. i)) .. "|" .. SerializeCF(wp)
+            end
+        end
+        writefile(WP_FILE, table.concat(lines, "\n"))
+    end)
+end
+
+local function LoadWaypointsFromFile()
+    pcall(function()
+        if not isfile or not isfile(WP_FILE) then return end
+        local content = readfile(WP_FILE)
+        for line in content:gmatch("[^\n]+") do
+            local parts = {}
+            for part in line:gmatch("[^|]+") do parts[#parts+1] = part end
+            if #parts >= 3 then
+                local idx = tonumber(parts[1])
+                if idx and idx >= 1 and idx <= 5 then
+                    WaypointNames[idx] = parts[2]
+                    Waypoints[idx] = DeserializeCF(parts[3])
+                end
+            end
+        end
+    end)
+end
+LoadWaypointsFromFile()
+
+--==================================================
+-- LANGUAGE
 --==================================================
 local LANG_FILE, LANG_NAMES = "DarkHub/lang.txt", { "English", "ไทย" }
 local Lang = "en"
@@ -65,60 +147,68 @@ local STR = {
         spinlv_t = "Spin Speed", lvlspin_d = "x1 = 1 rad/s  ->  x100 = 100 rad/s",
         spinrev_t = "Reverse Direction", spinrev_d = "Spin the other way",
         sec_safety = "SAFETY",
-        void_t = "Anti-Void", void_d = "Return to your last safe spot if you fall off the map or through the floor",
+        void_t = "Anti-Void", void_d = "Return to your last safe spot if you fall off the map",
+        fling_t = "Anti-Fling", fling_d = "Reset your velocity if someone tries to fling you off",
         sec_tp = "TELEPORT",
         tp_sel_t = "Select Player", tp_sel_d = "Choose a player to teleport to",
         tp_go_t = "Teleport to Player", tp_go_d = "Teleport above the selected player's head",
-        tp_rst_t = "Reset Player List", tp_rst_d = "Refresh the list now (it also updates automatically)",
+        tp_rst_t = "Reset Player List", tp_rst_d = "Refresh the list now",
         sec_quick = "QUICK TELEPORT",
         clicktp_t = "Click Teleport", clicktp_d = "Hold Left Alt and click the ground to teleport there",
         savepos_t = "Save Position", savepos_d = "Remember where you are standing right now",
         gopos_t = "Go to Saved Position", gopos_d = "Teleport back to the saved position",
+        sec_wp = "WAYPOINTS",
+        wp_nametmpl = "Waypoint %d Name", wp_named = "Type a name to label this waypoint",
+        wp_savetmpl = "Save Slot %d", wp_saved = "Save your current position into this slot",
+        wp_gotmpl = "Go to Slot %d", wp_god = "Teleport to the saved position of this slot",
+        wp_empty = "Slot is empty — save first", n_wp_saved = "Waypoint saved",
+        n_wp_go = "Teleported to waypoint",
         sec_spec = "SPECTATE",
         spec_pick_t = "Spectate Player", spec_pick_d = "Choose a player to watch",
-        spec_t = "Spectate", spec_d = "Third-person view of the selected player (your character stays still)",
+        spec_t = "Spectate", spec_d = "Third-person view of the selected player",
         sec_fol = "FOLLOW",
         fol_pick_t = "Follow Player", fol_pick_d = "Choose a player to stick to",
-        fol_t = "Follow", fol_d = "Stick to the selected player's back and go wherever they go",
-        fol_dist_t = "Follow Distance", fol_dist_d = "Distance behind the target (1 = touching, higher = further away)",
-        fol_h_t = "Follow Height", fol_h_d = "Height relative to the target (negative = lower)",
-        trk_stop_t = "Stop All Tracking", trk_stop_d = "Stop Spectate and Follow and return to normal control",
+        fol_t = "Follow", fol_d = "Stick to the selected player's back",
+        fol_dist_t = "Follow Distance", fol_dist_d = "Distance behind the target",
+        fol_h_t = "Follow Height", fol_h_d = "Height relative to the target",
+        trk_stop_t = "Stop All Tracking", trk_stop_d = "Stop Spectate and Follow",
         no_players = "(No other players)", no_match = "(No match)",
         search_t = "Search Player", search_d = "Type a name or @username to filter the list",
         sec_Player = "ESP: PLAYERS", sec_Item = "ESP: ITEMS",
         esp_Player_t = "Player ESP", esp_Player_d = "Highlight other players through walls",
-        info_Player_t = "Show Player Info", info_Player_d = "Show [Player] name / distance / health above the player",
-        col_Player_t = "Player ESP Color", col_Player_d = "Choose the outline and text color for players",
-        esp_Item_t = "Item ESP", esp_Item_d = "Highlight items lying on the map and interactable pickups",
-        info_Item_t = "Show Item Info", info_Item_d = "Show [Item] name / distance above the item",
-        col_Item_t = "Item ESP Color", col_Item_d = "Choose the outline and text color for items",
+        info_Player_t = "Show Player Info", info_Player_d = "Show name / distance / health",
+        col_Player_t = "Player ESP Color", col_Player_d = "Choose the color for players",
+        esp_Item_t = "Item ESP", esp_Item_d = "Highlight items and pickups",
+        info_Item_t = "Show Item Info", info_Item_d = "Show name / distance",
+        col_Item_t = "Item ESP Color", col_Item_d = "Choose the color for items",
         sec_light = "LIGHTING",
         bright_t = "Full Bright", bright_d = "Toggle bright mode (only you can see it)",
         light_t = "Light Level", light_d = "Brightness 1 (dark) -> 10 (brightest)",
-        fog_t = "No Fog", fog_d = "Remove in-game fog (only you can see it)",
+        fog_t = "No Fog", fog_d = "Remove in-game fog",
         sec_perf = "PERFORMANCE",
-        boost_t = "FPS Boost", boost_d = "Remove effects/textures/shadows for a plainer picture and less lag (only you)",
+        boost_t = "FPS Boost", boost_d = "Remove effects/textures/shadows to reduce lag",
         sec_cam = "CAMERA",
         zoom_t = "Infinite Zoom", zoom_d = "Remove the camera zoom-out limit",
+        freecam_t = "Freecam", freecam_d = "Detach camera from body. PC: WASD move, Q/E up-down, hold Right-click and drag to look, Shift = boost. Mobile: drag one finger to look, thumbstick to move, UP/DOWN/FAST buttons. Gamepad: both sticks",
+        sec_hud = "INFO HUD",
+        hud_t = "Show HUD", hud_d = "Display FPS, Ping, Position and player count (draggable)",
         sec_sess = "SESSION",
         afk_t = "Anti-AFK", afk_d = "Prevent being kicked for standing idle",
         respawn_t = "Respawn", respawn_d = "Reset your character",
-        rejoin_t = "Rejoin Server", rejoin_d = "Reconnect to this server (a fresh one if you are alone)",
+        rejoin_t = "Rejoin Server", rejoin_d = "Reconnect to this server",
         sec_lang = "LANGUAGE", lang_t = "Language", lang_d = "Choose the menu language",
         sec_iface = "INTERFACE", theme_t = "Theme", theme_d = "Change the menu theme",
         menukey_t = "Minimize Bind",
         sec_script = "SCRIPT",
         unload_t = "Unload Script", unload_d = "Close the menu and undo every change",
-        nt_trk = "Tracking", nt_tp = "Teleport", nt_safe = "Safety",
-        n_loaded = "Loaded successfully",
-        n_boost_done = "Detail reduction complete",
-        n_tp_list = "List refreshed: %d player(s)",
-        n_tp_missing = "Selected player not found (they may have left)",
+        nt_trk = "Tracking", nt_tp = "Teleport", nt_safe = "Safety", nt_wp = "Waypoints",
+        n_loaded = "Loaded successfully", n_boost_done = "Detail reduction complete",
+        n_tp_list = "List refreshed: %d player(s)", n_tp_missing = "Selected player not found",
         n_tp_notready = "Character not ready, try again",
         n_spec_none = "No players to spectate", n_spec_on = "Spectating: %s",
-        n_spec_left = "The player you were spectating left the server",
+        n_spec_left = "The player you were spectating left",
         n_fol_none = "No players to follow", n_fol_on = "Following: %s",
-        n_fol_left = "The player you were following left the server",
+        n_fol_left = "The player you were following left",
         n_trk_stopped = "All tracking stopped",
         n_pos_saved = "Position saved", n_pos_none = "No saved position yet",
         n_void = "Returned to your last safe spot",
@@ -137,63 +227,71 @@ local STR = {
         lvl50_d = "x1 = 50  ->  x100 = 5000",
         infjump_t = "กระโดดไม่จำกัด", infjump_d = "กดกระโดดซ้ำกลางอากาศได้",
         sec_special = "ความสามารถพิเศษ (SPECIAL)",
-        noclip_t = "ทะลุสิ่งปลูกสร้าง", noclip_d = "เดินทะลุกำแพงและสิ่งปลูกสร้างได้ แต่ยังยืนบนพื้นได้ ไม่ตกแมพ",
-        water_t = "เดินบนผิวน้ำ", water_d = "เดินลอยบนผิวน้ำแทนการว่าย (น้ำของ Terrain)",
+        noclip_t = "ทะลุสิ่งปลูกสร้าง", noclip_d = "เดินทะลุกำแพงและสิ่งปลูกสร้างได้ แต่ยังยืนบนพื้นได้",
+        water_t = "เดินบนผิวน้ำ", water_d = "เดินลอยบนผิวน้ำแทนการว่าย",
         sec_spin = "หมุน (SPIN)",
         spin_t = "หมุนตัว", spin_d = "ทำให้ตัวละครหมุนๆๆ ไปเรื่อยๆ",
         spinlv_t = "ความเร็วหมุน", lvlspin_d = "x1 = 1 rad/s  ->  x100 = 100 rad/s",
         spinrev_t = "หมุนกลับทิศ", spinrev_d = "หมุนไปทางตรงข้าม",
         sec_safety = "ความปลอดภัย (SAFETY)",
         void_t = "กันตกแมพ", void_d = "ถ้าตกแมพหรือทะลุพื้น จะวาร์ปกลับจุดปลอดภัยล่าสุด",
+        fling_t = "กันปา", fling_d = "รีเซ็ตความเร็วถ้าถูกคนอื่นปา/ฟาดกระเด็น",
         sec_tp = "วาร์ป (TELEPORT)",
         tp_sel_t = "เลือกผู้เล่น", tp_sel_d = "เลือกผู้เล่นที่จะวาร์ปไปหา",
         tp_go_t = "วาร์ปไปหาผู้เล่น", tp_go_d = "วาร์ปไปอยู่บนหัวผู้เล่นที่เลือก",
-        tp_rst_t = "รีเซ็ตรายชื่อผู้เล่น", tp_rst_d = "รีเฟรชรายชื่อทันที (ปกติอัปเดตเองอยู่แล้ว)",
+        tp_rst_t = "รีเซ็ตรายชื่อผู้เล่น", tp_rst_d = "รีเฟรชรายชื่อทันที",
         sec_quick = "วาร์ปด่วน (QUICK TELEPORT)",
         clicktp_t = "คลิกวาร์ป", clicktp_d = "กด Alt ซ้ายค้างแล้วคลิกที่พื้นเพื่อวาร์ปไปจุดนั้น",
         savepos_t = "บันทึกตำแหน่ง", savepos_d = "จำตำแหน่งที่ยืนอยู่ตอนนี้",
         gopos_t = "กลับไปตำแหน่งที่บันทึก", gopos_d = "วาร์ปกลับไปจุดที่บันทึกไว้",
+        sec_wp = "จุดวาร์ป (WAYPOINTS)",
+        wp_nametmpl = "ชื่อจุดวาร์ป %d", wp_named = "พิมพ์ชื่อเพื่อระบุจุดวาร์ปนี้",
+        wp_savetmpl = "บันทึกช่อง %d", wp_saved = "บันทึกตำแหน่งปัจจุบันลงช่องนี้",
+        wp_gotmpl = "ไปช่อง %d", wp_god = "วาร์ปไปยังตำแหน่งที่บันทึกไว้ของช่องนี้",
+        wp_empty = "ช่องว่าง — กรุณาบันทึกก่อน", n_wp_saved = "บันทึกจุดวาร์ปแล้ว",
+        n_wp_go = "วาร์ปไปจุดที่บันทึกแล้ว",
         sec_spec = "ดูมุมมอง (SPECTATE)",
         spec_pick_t = "ผู้เล่นที่ต้องการดู", spec_pick_d = "เลือกผู้เล่นที่จะดูมุมมอง",
-        spec_t = "ดูมุมมองผู้เล่น", spec_d = "ดูมุมมองบุคคลที่ 3 ของผู้เล่นที่เลือก (ตัวเราไม่ขยับ)",
+        spec_t = "ดูมุมมองผู้เล่น", spec_d = "ดูมุมมองบุคคลที่ 3 ของผู้เล่นที่เลือก",
         sec_fol = "เกาะหลัง (FOLLOW)",
         fol_pick_t = "ผู้เล่นที่ต้องการตาม", fol_pick_d = "เลือกผู้เล่นที่จะเกาะหลัง",
-        fol_t = "เกาะหลัง", fol_d = "ตัวเราเกาะหลังผู้เล่นที่เลือก เขาไปไหนเราไปด้วย",
-        fol_dist_t = "ระยะห่าง", fol_dist_d = "ระยะด้านหลังเป้าหมาย (1 = ติดตัว, เพิ่มเพื่อลอยห่างออก)",
-        fol_h_t = "ความสูง", fol_h_d = "ความสูงเทียบกับเป้าหมาย (ลบ = ต่ำกว่า)",
-        trk_stop_t = "หยุดติดตามทั้งหมด", trk_stop_d = "หยุด Spectate และ Follow แล้วกลับมาควบคุมตัวเองปกติ",
+        fol_t = "เกาะหลัง", fol_d = "ตัวเราเกาะหลังผู้เล่นที่เลือก",
+        fol_dist_t = "ระยะห่าง", fol_dist_d = "ระยะด้านหลังเป้าหมาย",
+        fol_h_t = "ความสูง", fol_h_d = "ความสูงเทียบกับเป้าหมาย",
+        trk_stop_t = "หยุดติดตามทั้งหมด", trk_stop_d = "หยุด Spectate และ Follow",
         no_players = "(ไม่มีผู้เล่นอื่น)", no_match = "(ไม่พบผู้เล่น)",
         search_t = "ค้นหาผู้เล่น", search_d = "พิมพ์ชื่อหรือ @username เพื่อกรองรายชื่อ",
         sec_Player = "ESP ผู้เล่น (PLAYERS)", sec_Item = "ESP ไอเท็ม (ITEMS)",
         esp_Player_t = "ESP ผู้เล่น", esp_Player_d = "ไฮไลต์ผู้เล่นคนอื่น มองเห็นทะลุกำแพง",
-        info_Player_t = "แสดงข้อมูลผู้เล่น", info_Player_d = "แสดงป้าย [Player] ชื่อ / ระยะ / เลือด เหนือหัวผู้เล่น",
-        col_Player_t = "สี ESP ผู้เล่น", col_Player_d = "เลือกสีกรอบและตัวอักษรของผู้เล่น",
-        esp_Item_t = "ESP ไอเท็ม", esp_Item_d = "ไฮไลต์ไอเท็มที่วางอยู่ในแมพ และของที่กดเก็บ/โต้ตอบได้",
-        info_Item_t = "แสดงข้อมูลไอเท็ม", info_Item_d = "แสดงป้าย [Item] ชื่อ / ระยะ เหนือไอเท็ม",
-        col_Item_t = "สี ESP ไอเท็ม", col_Item_d = "เลือกสีกรอบและตัวอักษรของไอเท็ม",
+        info_Player_t = "แสดงข้อมูลผู้เล่น", info_Player_d = "แสดงชื่อ / ระยะ / เลือด",
+        col_Player_t = "สี ESP ผู้เล่น", col_Player_d = "เลือกสีของผู้เล่น",
+        esp_Item_t = "ESP ไอเท็ม", esp_Item_d = "ไฮไลต์ไอเท็มที่วางอยู่ในแมพ",
+        info_Item_t = "แสดงข้อมูลไอเท็ม", info_Item_d = "แสดงชื่อ / ระยะ",
+        col_Item_t = "สี ESP ไอเท็ม", col_Item_d = "เลือกสีของไอเท็ม",
         sec_light = "แสงและหมอก (LIGHTING)",
         bright_t = "โหมดสว่าง", bright_d = "เปิด/ปิดโหมดสว่าง เห็นแค่เราคนเดียว",
         light_t = "ระดับความสว่าง", light_d = "ระดับความสว่าง 1 (มืด) -> 10 (สว่างสุด)",
-        fog_t = "ลบหมอก", fog_d = "ลบหมอกในเกม (เห็นแค่เราคนเดียว)",
+        fog_t = "ลบหมอก", fog_d = "ลบหมอกในเกม",
         sec_perf = "ประสิทธิภาพ (PERFORMANCE)",
-        boost_t = "เพิ่ม FPS", boost_d = "ลบเอฟเฟกต์/เท็กซ์เจอร์/เงา ให้ภาพเรียบๆ ลดแลค (เห็นแค่เรา)",
+        boost_t = "เพิ่ม FPS", boost_d = "ลบเอฟเฟกต์/เท็กซ์เจอร์/เงา ให้ภาพเรียบๆ ลดแลค",
         sec_cam = "กล้อง (CAMERA)",
         zoom_t = "ซูมไม่จำกัด", zoom_d = "ปลดล็อกระยะซูมออกของกล้อง",
+        freecam_t = "กล้องอิสระ", freecam_d = "ปลดกล้องจากตัว PC: WASD เดิน Q/E ขึ้น-ลง กดคลิกขวาค้างแล้วลากเพื่อหัน Shift = เร็วขึ้น มือถือ: ลากนิ้วเดียวเพื่อหัน จอยเดินเพื่อเคลื่อนที่ ปุ่ม UP/DOWN/FAST จอยเกมแพด: ใช้สติ๊กซ้าย-ขวา",
+        sec_hud = "HUD ข้อมูล (INFO HUD)",
+        hud_t = "แสดง HUD", hud_d = "แสดง FPS, Ping, พิกัด และจำนวนผู้เล่น (ลากย้ายได้)",
         sec_sess = "เซสชัน (SESSION)",
-        afk_t = "กันหลุดเมื่อไม่ขยับ", afk_d = "กันโดนเตะตอนยืนนิ่งไม่ขยับ (AFK)",
+        afk_t = "กันหลุดเมื่อไม่ขยับ", afk_d = "กันโดนเตะตอนยืนนิ่ง",
         respawn_t = "เกิดใหม่", respawn_d = "รีเซ็ตตัวละคร",
-        rejoin_t = "เข้าเซิร์ฟใหม่", rejoin_d = "เชื่อมต่อเซิร์ฟนี้ใหม่ (ถ้าอยู่คนเดียวจะเข้าเซิร์ฟใหม่)",
+        rejoin_t = "เข้าเซิร์ฟใหม่", rejoin_d = "เชื่อมต่อเซิร์ฟนี้ใหม่",
         sec_lang = "ภาษา (LANGUAGE)", lang_t = "ภาษา", lang_d = "เลือกภาษาของเมนู",
         sec_iface = "หน้าตา (INTERFACE)", theme_t = "ธีม", theme_d = "เปลี่ยนธีมของเมนู",
         menukey_t = "ปุ่มย่อ/เปิดเมนู",
         sec_script = "สคริปต์ (SCRIPT)",
-        unload_t = "ปิดสคริปต์", unload_d = "ปิดเมนูและคืนค่าทุกอย่างกลับเป็นปกติ",
-        nt_trk = "ติดตาม", nt_tp = "วาร์ป", nt_safe = "ความปลอดภัย",
-        n_loaded = "โหลดเรียบร้อย",
-        n_boost_done = "ลดรายละเอียดเรียบร้อย",
-        n_tp_list = "รีเซ็ตรายชื่อแล้ว: %d คน",
-        n_tp_missing = "ไม่พบผู้เล่นที่เลือก (อาจออกจากเซิร์ฟแล้ว)",
-        n_tp_notready = "ตัวละครของเขาหรือของเรายังไม่พร้อม ลองใหม่อีกครั้ง",
+        unload_t = "ปิดสคริปต์", unload_d = "ปิดเมนูและคืนค่าทุกอย่าง",
+        nt_trk = "ติดตาม", nt_tp = "วาร์ป", nt_safe = "ความปลอดภัย", nt_wp = "จุดวาร์ป",
+        n_loaded = "โหลดเรียบร้อย", n_boost_done = "ลดรายละเอียดเรียบร้อย",
+        n_tp_list = "รีเซ็ตรายชื่อแล้ว: %d คน", n_tp_missing = "ไม่พบผู้เล่นที่เลือก",
+        n_tp_notready = "ตัวละครของเขาหรือของเรายังไม่พร้อม",
         n_spec_none = "ไม่มีผู้เล่นให้ดู", n_spec_on = "กำลังดู: %s",
         n_spec_left = "ผู้เล่นที่ดูอยู่ออกจากเซิร์ฟแล้ว",
         n_fol_none = "ไม่มีผู้เล่นให้ตาม", n_fol_on = "กำลังเกาะหลัง: %s",
@@ -213,21 +311,18 @@ local function T(key, ...)
     return s
 end
 
--- ตารางย้อนกลับ ข้อความ -> key (ใช้ตอนสลับภาษาแบบสดโดยไม่ต้องสร้างเมนูใหม่)
 local REV = { en = {}, th = {} }
 for lang, tbl in next, STR do
     for k, v in next, tbl do
-        if k:sub(1, 2) ~= "n_" and k:sub(1, 3) ~= "nt_" then REV[lang][v] = k end
+        if k:sub(1, 2) ~= "n_" and k:sub(1, 3) ~= "nt_" and not v:find("%%d") then
+            REV[lang][v] = k
+        end
     end
 end
 
 local LangHooks = {}
+local function Note(title, content, dur) Fluent:Notify({ Title = title, Content = content, Duration = dur or 4 }) end
 
-local function Note(title, content, dur)
-    Fluent:Notify({ Title = title, Content = content, Duration = dur or 4 })
-end
-
--- เหลือแค่ธีม Dark กับ Light ในรายการธีมของ Fluent
 for i = #Fluent.Themes, 1, -1 do
     local n = Fluent.Themes[i]
     if n ~= "Dark" and n ~= "Light" then table.remove(Fluent.Themes, i) end
@@ -242,21 +337,18 @@ local Settings = {
     SpinOn = false, SpinLevel = 10, SpinReverse = false,
     AntiVoid = true, ClickTP = false, Zoom = false, AntiAFK = true,
     BrightOn = false, BrightLevel = 10, NoFog = false, Boost = false,
+    AntiFling = true, Freecam = false, HUD = false,
 }
 local MAX_LEVEL, WALK_BASE, JUMP_BASE, FLY_BASE = 100, 16, 50, 16
 
 local Links = {}
 local function Track(conn) table.insert(Links, conn) return conn end
 
-local function GetHumanoid()
-    local char = LP.Character
-    return char and char:FindFirstChildOfClass("Humanoid")
-end
+local function GetHumanoid() local char = LP.Character return char and char:FindFirstChildOfClass("Humanoid") end
+local function GetRoot() local char = LP.Character return char and char:FindFirstChild("HumanoidRootPart") end
 
-local function GetRoot()
-    local char = LP.Character
-    return char and char:FindFirstChild("HumanoidRootPart")
-end
+-- Freecam state (forward-declared so ApplyStats can see it; filled in the FREECAM section)
+local FC = { on = false }
 
 --==================================================
 -- ESP
@@ -279,18 +371,12 @@ local function AddEntry(kind, key, hlTarget, adornee, hum, name)
     local cat = Cats[kind]
     if not cat.on or Entries[key] or not (key.Parent and adornee.Parent) then return end
     local col = cat.color
-    local hl = New("Highlight", {
-        Name = "DarkHubHighlight", Adornee = hlTarget, FillColor = col, OutlineColor = col,
-        FillTransparency = 0.8, DepthMode = Enum.HighlightDepthMode.AlwaysOnTop,
-    }, hlTarget)
-    local bb = New("BillboardGui", {
-        Name = "DarkHubInfo", Adornee = adornee, Size = UDim2.fromOffset(190, 60),
-        StudsOffset = Vector3.new(0, 2.5, 0), AlwaysOnTop = true, Enabled = cat.info,
-    }, adornee)
-    local label = New("TextLabel", {
-        Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Font = Enum.Font.GothamBold,
-        TextSize = 12, TextColor3 = col, TextStrokeTransparency = 0.25,
-    }, bb)
+    local hl = New("Highlight", { Name = "DarkHubHighlight", Adornee = hlTarget, FillColor = col, OutlineColor = col,
+        FillTransparency = 0.8, DepthMode = Enum.HighlightDepthMode.AlwaysOnTop }, hlTarget)
+    local bb = New("BillboardGui", { Name = "DarkHubInfo", Adornee = adornee, Size = UDim2.fromOffset(190, 60),
+        StudsOffset = Vector3.new(0, 2.5, 0), AlwaysOnTop = true, Enabled = cat.info }, adornee)
+    local label = New("TextLabel", { Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1,
+        Font = Enum.Font.GothamBold, TextSize = 12, TextColor3 = col, TextStrokeTransparency = 0.25 }, bb)
     Entries[key] = { kind = kind, hl = hl, bb = bb, label = label, adornee = adornee, hum = hum, name = name, text = "" }
 end
 
@@ -299,13 +385,10 @@ local function AddHumanoid(hum)
     if not (model and model:IsA("Model")) then return end
     local plr = Players:GetPlayerFromCharacter(model)
     if not plr or plr == LP or not Cats.Player.on then return end
-    local root = hum.RootPart or model:FindFirstChild("HumanoidRootPart")
-    root = root or model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart")
+    local root = hum.RootPart or model:FindFirstChild("HumanoidRootPart") or model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart")
     if not root then return end
     local head = model:FindFirstChild("Head")
-    AddEntry("Player", model, model,
-        (head and head:IsA("BasePart")) and head or root,
-        hum, plr.DisplayName)
+    AddEntry("Player", model, model, (head and head:IsA("BasePart")) and head or root, hum, plr.DisplayName)
 end
 
 local function AddTool(tool)
@@ -337,9 +420,7 @@ local function Consider(inst)
     end
 end
 
-local scanGen = 0
-local scanning = false
-local scanPending = false
+local scanGen, scanning, scanPending = 0, false, false
 
 local function Rescan()
     scanGen += 1
@@ -349,15 +430,10 @@ local function Rescan()
         repeat
             scanPending = false
             local gen = scanGen
-            local slice = Slicer()
-            local ok, descendants = pcall(function() return workspace:GetDescendants() end)
-            if ok and type(descendants) == "table" then
-                for _, inst in ipairs(descendants) do
-                    if gen ~= scanGen then break end
-                    pcall(Consider, inst)
-                    slice()
-                end
-            end
+            WalkTree(workspace, function(inst)
+                if gen ~= scanGen then return true end
+                pcall(Consider, inst)
+            end, Slicer(0.008))
         until not scanPending and scanGen == gen
         scanning = false
     end)
@@ -373,9 +449,7 @@ local function SetCat(kind, on)
                     if hum then AddHumanoid(hum) end
                 end
             end
-        else
-            Rescan()
-        end
+        else Rescan() end
     else
         for key, e in next, Entries do
             if e.kind == kind then RemoveEntry(key) end
@@ -390,7 +464,9 @@ local function ClearESP()
 end
 
 Track(workspace.DescendantAdded:Connect(function(inst)
-    if Cats.Player.on or Cats.Item.on then pcall(Consider, inst) end
+    if not (Cats.Player.on or Cats.Item.on) then return end
+    if not (inst:IsA("Humanoid") or inst:IsA("Tool") or inst:IsA("ProximityPrompt")) then return end
+    pcall(Consider, inst)
 end))
 
 local lastESP = 0
@@ -411,8 +487,7 @@ local function UpdateESP()
             if e.label.TextColor3 ~= cat.color then e.label.TextColor3 = cat.color end
             if e.bb.Enabled ~= cat.info then e.bb.Enabled = cat.info end
             if cat.info then
-                local text = string.format("[%s] %s\n%d studs", cat.tag, e.name,
-                    math.floor((camPos - e.adornee.Position).Magnitude))
+                local text = string.format("[%s] %s\n%d studs", cat.tag, e.name, math.floor((camPos - e.adornee.Position).Magnitude))
                 if e.hum and e.hum.Parent then
                     text ..= string.format(" | HP: %d/%d", math.floor(e.hum.Health), math.floor(e.hum.MaxHealth))
                 end
@@ -435,15 +510,11 @@ local function StopFly()
     if flyBV then flyBV:Destroy() flyBV = nil end
     if flyBG then flyBG:Destroy() flyBG = nil end
     local hum = GetHumanoid()
-    if hum then
-        hum.PlatformStand = false
-        hum:ChangeState(Enum.HumanoidStateType.GettingUp)
-    end
+    if hum then hum.PlatformStand = false hum:ChangeState(Enum.HumanoidStateType.GettingUp) end
 end
 
 local function StartFly()
-    local hum = GetHumanoid()
-    local root = GetRoot()
+    local hum, root = GetHumanoid(), GetRoot()
     if not (hum and root) then return false end
     Flying = true
     hum.PlatformStand = true
@@ -481,6 +552,7 @@ local function RestoreJump()
 end
 
 local function ApplyStats()
+    if FC.on then return end -- Freecam freezes the body; don't fight it
     if not (Settings.WalkOn or Settings.JumpOn) then return end
     local hum = GetHumanoid()
     if not hum then return end
@@ -539,9 +611,7 @@ local function ApplySpin()
     if not (root and hum) then return end
     if not (spinBV and spinBV.Parent == root) then
         if spinBV then spinBV:Destroy() end
-        spinBV = New("BodyAngularVelocity", {
-            Name = "DarkHubSpin", MaxTorque = Vector3.new(0, 9e9, 0), P = 1e5,
-        }, root)
+        spinBV = New("BodyAngularVelocity", { Name = "DarkHubSpin", MaxTorque = Vector3.new(0, 9e9, 0), P = 1e5 }, root)
     end
     if spinAuto == nil then spinAuto = hum.AutoRotate end
     if hum.AutoRotate then hum.AutoRotate = false end
@@ -565,9 +635,7 @@ local function ClipStep()
     local char = LP.Character
     if not char then return end
     if char ~= Clip.char or #Clip.parts == 0 then ClipCache(char) end
-    for _, p in ipairs(Clip.parts) do
-        if p.CanCollide then p.CanCollide = false end
-    end
+    for _, p in ipairs(Clip.parts) do if p.CanCollide then p.CanCollide = false end end
 end
 
 local function ClipAcquire(who)
@@ -580,9 +648,7 @@ local function ClipRelease(who)
     Clip.users[who] = nil
     if next(Clip.users) ~= nil then return end
     if Clip.conn then Clip.conn:Disconnect() Clip.conn = nil end
-    for _, p in ipairs(Clip.parts) do
-        if p.Parent then p.CanCollide = true end
-    end
+    for _, p in ipairs(Clip.parts) do if p.Parent then p.CanCollide = true end end
     Clip.parts, Clip.char = {}, nil
 end
 
@@ -608,11 +674,8 @@ local function StartWater()
         local root = char and char:FindFirstChild("HumanoidRootPart")
         if not root then return end
         if not (WW.part and WW.part.Parent) then
-            WW.part = New("Part", {
-                Name = "DarkHubWater", Anchored = true, CanCollide = false, Transparency = 1,
-                CanQuery = false, CanTouch = false, CastShadow = false, Locked = true,
-                Size = Vector3.new(16, 1, 16),
-            }, workspace)
+            WW.part = New("Part", { Name = "DarkHubWater", Anchored = true, CanCollide = false, Transparency = 1,
+                CanQuery = false, CanTouch = false, CastShadow = false, Locked = true, Size = Vector3.new(16, 1, 16) }, workspace)
         end
         WW.acc += dt
         if WW.acc >= 0.1 then
@@ -638,7 +701,7 @@ local function StartWater()
 end
 
 --==================================================
--- SAFETY
+-- SAFETY (Anti-Void + Anti-Fling)
 --==================================================
 local lastSafe
 local voidParams = RaycastParams.new()
@@ -670,6 +733,20 @@ local function SafetyTick()
     end
 end
 
+local function AntiFlingTick()
+    if not Settings.AntiFling then return end
+    if Flying or Settings.SpinOn then return end
+    local char = LP.Character
+    local root = char and char:FindFirstChild("HumanoidRootPart")
+    if not root then return end
+    local lin = root.AssemblyLinearVelocity.Magnitude
+    local ang = root.AssemblyAngularVelocity.Magnitude
+    if lin > 3000 or (lin > 800 and ang > 50) then
+        root.AssemblyLinearVelocity = Vector3.zero
+        root.AssemblyAngularVelocity = Vector3.zero
+    end
+end
+
 --==================================================
 -- UTILITY
 --==================================================
@@ -696,10 +773,7 @@ local VU
 pcall(function() VU = game:GetService("VirtualUser") end)
 Track(LP.Idled:Connect(function()
     if not (Settings.AntiAFK and VU) then return end
-    pcall(function()
-        VU:CaptureController()
-        VU:ClickButton2(Vector2.new())
-    end)
+    pcall(function() VU:CaptureController() VU:ClickButton2(Vector2.new()) end)
 end))
 
 local origZoom
@@ -714,6 +788,414 @@ local function ApplyZoom(on)
 end
 
 --==================================================
+-- FREECAM (v2: yaw/pitch, PC + Mobile + Gamepad)
+--==================================================
+for k, v in next, {
+    conns = {}, pos = Vector3.zero, yaw = 0, pitch = 0,
+    subject = nil, savedWalk = nil, savedJumpPower = nil, savedJumpHeight = nil,
+    touches = {}, rightDown = false, gui = nil,
+    up = false, down = false, fast = false, gpLook = Vector2.zero,
+    speed = 40, root = nil, wasAnchored = false,
+} do FC[k] = v end
+
+local FC_SENS_MOUSE, FC_SENS_TOUCH, FC_PITCH_LIMIT = 0.3, 0.25, math.rad(89)
+
+local function FCLook(dx, dy, sens)
+    FC.yaw = (FC.yaw - math.rad(dx * sens)) % (math.pi * 2)
+    FC.pitch = math.clamp(FC.pitch - math.rad(dy * sens), -FC_PITCH_LIMIT, FC_PITCH_LIMIT)
+end
+
+local function MakeFCGui()
+    local gui = New("ScreenGui", {
+        Name = "DarkHubFreecam", ResetOnSpawn = false, DisplayOrder = 997, IgnoreGuiInset = true,
+    })
+    if not pcall(function() gui.Parent = (gethui and gethui()) or game:GetService("CoreGui") end) then
+        gui.Parent = LP:WaitForChild("PlayerGui")
+    end
+    local function isPress(i)
+        return i.UserInputType == Enum.UserInputType.Touch or i.UserInputType == Enum.UserInputType.MouseButton1
+    end
+    local function makeBtn(text, yOff, onDown, onUp)
+        local b = New("TextButton", {
+            Size = UDim2.fromOffset(56, 56), AnchorPoint = Vector2.new(1, 0.5),
+            Position = UDim2.new(1, -16, 0.5, yOff),
+            BackgroundColor3 = C(18, 18, 24), BackgroundTransparency = 0.25,
+            AutoButtonColor = false, Text = text, Font = Enum.Font.GothamBold,
+            TextSize = 14, TextColor3 = C(240, 240, 245),
+        }, gui)
+        New("UICorner", { CornerRadius = UDim.new(1, 0) }, b)
+        New("UIStroke", { Thickness = 1.5, Color = C(90, 220, 150), Transparency = 0.4 }, b)
+        b.InputBegan:Connect(function(i) if isPress(i) then onDown(b) end end)
+        b.InputEnded:Connect(function(i) if onUp and isPress(i) then onUp(b) end end)
+        return b
+    end
+    makeBtn("UP", -70, function() FC.up = true end, function() FC.up = false end)
+    makeBtn("DOWN", 0, function() FC.down = true end, function() FC.down = false end)
+    makeBtn("FAST", 70, function(b)
+        FC.fast = not FC.fast
+        b.BackgroundColor3 = FC.fast and C(40, 120, 80) or C(18, 18, 24)
+    end)
+    return gui
+end
+
+local function FCStep(dt)
+    local c = workspace.CurrentCamera
+    if not (FC.on and c) then return end
+    if c.CameraType ~= Enum.CameraType.Scriptable then c.CameraType = Enum.CameraType.Scriptable end
+
+    -- gamepad right stick look
+    if FC.gpLook.Magnitude > 0.15 then
+        FCLook(FC.gpLook.X * 120 * dt, -FC.gpLook.Y * 120 * dt, 1)
+    end
+
+    local rot = CFrame.fromOrientation(FC.pitch, FC.yaw, 0)
+
+    -- keyboard
+    local kb = Vector3.zero
+    if UIS:IsKeyDown(Enum.KeyCode.W) then kb += rot.LookVector end
+    if UIS:IsKeyDown(Enum.KeyCode.S) then kb -= rot.LookVector end
+    if UIS:IsKeyDown(Enum.KeyCode.A) then kb -= rot.RightVector end
+    if UIS:IsKeyDown(Enum.KeyCode.D) then kb += rot.RightVector end
+    if UIS:IsKeyDown(Enum.KeyCode.E) then kb += Vector3.yAxis end
+    if UIS:IsKeyDown(Enum.KeyCode.Q) then kb -= Vector3.yAxis end
+
+    local move
+    if kb.Magnitude > 0 then
+        move = kb.Unit
+    else
+        move = Vector3.zero
+        -- mobile thumbstick / gamepad left stick (via Humanoid.MoveDirection)
+        local hum = GetHumanoid()
+        local md = hum and hum.MoveDirection or Vector3.zero
+        if md.Magnitude > 0 then
+            local l = CFrame.fromOrientation(0, FC.yaw, 0):VectorToObjectSpace(md)
+            move = rot.LookVector * (-l.Z) + rot.RightVector * l.X
+        end
+    end
+    local vert = (FC.up and 1 or 0) - (FC.down and 1 or 0)
+    if vert ~= 0 then move += Vector3.yAxis * vert end
+    if move.Magnitude > 1 then move = move.Unit end
+
+    local boost = (FC.fast or UIS:IsKeyDown(Enum.KeyCode.LeftShift)) and 4 or 1
+    FC.pos += move * FC.speed * boost * dt
+    c.CFrame = CFrame.new(FC.pos) * rot
+end
+
+local function StopFreecam()
+    if not FC.on then return end
+    FC.on = false
+    for _, cn in ipairs(FC.conns) do pcall(function() cn:Disconnect() end) end
+    table.clear(FC.conns)
+    if FC.gui then FC.gui:Destroy() FC.gui = nil end
+    FC.touches, FC.rightDown = {}, false
+    FC.up, FC.down, FC.fast, FC.gpLook = false, false, false, Vector2.zero
+    pcall(function() UIS.MouseBehavior = Enum.MouseBehavior.Default end)
+
+    local cam = workspace.CurrentCamera
+    if cam then
+        cam.CameraType = Enum.CameraType.Custom
+        if FC.subject and FC.subject.Parent then cam.CameraSubject = FC.subject
+        else local h = GetHumanoid() if h then cam.CameraSubject = h end end
+    end
+    local hum = GetHumanoid()
+    if hum then
+        if Settings.WalkOn then hum.WalkSpeed = WALK_BASE * Settings.WalkLevel
+        elseif FC.savedWalk then hum.WalkSpeed = FC.savedWalk end
+        if hum.UseJumpPower and FC.savedJumpPower then hum.JumpPower = FC.savedJumpPower end
+        if not hum.UseJumpPower and FC.savedJumpHeight then hum.JumpHeight = FC.savedJumpHeight end
+    end
+    if FC.root and FC.root.Parent then
+        FC.root.Anchored = FC.wasAnchored
+    end
+    FC.root, FC.wasAnchored = nil, false
+    FC.subject, FC.savedWalk = nil, nil
+end
+
+local function StartFreecam()
+    local cam = workspace.CurrentCamera
+    if not cam then return false end
+    if FC.on then return true end
+    FC.on = true
+    FC.pos = cam.CFrame.Position
+    local rx, ry = cam.CFrame:ToOrientation()
+    FC.pitch, FC.yaw = math.clamp(rx, -FC_PITCH_LIMIT, FC_PITCH_LIMIT), ry
+    FC.subject = cam.CameraSubject
+    cam.CameraType = Enum.CameraType.Scriptable
+
+    local hum = GetHumanoid()
+    if hum then
+        FC.savedWalk = hum.WalkSpeed
+        FC.savedJumpPower, FC.savedJumpHeight = hum.JumpPower, hum.JumpHeight
+        hum.WalkSpeed = 0
+        if hum.UseJumpPower then hum.JumpPower = 0 else hum.JumpHeight = 0 end
+    end
+
+    -- fully lock the body: nobody can push it, moving platforms can't carry it
+    local root = GetRoot()
+    if root then
+        FC.root, FC.wasAnchored = root, root.Anchored
+        root.AssemblyLinearVelocity = Vector3.zero
+        root.AssemblyAngularVelocity = Vector3.zero
+        root.Anchored = true
+    end
+
+    if UIS.TouchEnabled then FC.gui = MakeFCGui() end
+
+    local TOUCH, UT = Enum.UserInputType.Touch, Enum.UserInputType
+    table.insert(FC.conns, UIS.InputBegan:Connect(function(i, processed)
+        if not FC.on or processed then return end
+        if i.UserInputType == UT.MouseButton2 then
+            FC.rightDown = true
+            UIS.MouseBehavior = Enum.MouseBehavior.LockCurrentPosition
+        elseif i.UserInputType == TOUCH then
+            local vp = workspace.CurrentCamera.ViewportSize
+            local p = i.Position
+            -- skip the lower-left area (movement thumbstick)
+            if not (p.X < vp.X * 0.3 and p.Y > vp.Y * 0.5) then FC.touches[i] = true end
+        end
+    end))
+    table.insert(FC.conns, UIS.InputChanged:Connect(function(i)
+        if not FC.on then return end
+        local t = i.UserInputType
+        if t == UT.MouseMovement then
+            if FC.rightDown then FCLook(i.Delta.X, i.Delta.Y, FC_SENS_MOUSE) end
+        elseif t == TOUCH then
+            if FC.touches[i] then FCLook(i.Delta.X, i.Delta.Y, FC_SENS_TOUCH) end
+        elseif i.KeyCode == Enum.KeyCode.Thumbstick2 then
+            FC.gpLook = Vector2.new(i.Position.X, i.Position.Y)
+        end
+    end))
+    table.insert(FC.conns, UIS.InputEnded:Connect(function(i)
+        local t = i.UserInputType
+        if t == UT.MouseButton2 then
+            FC.rightDown = false
+            UIS.MouseBehavior = Enum.MouseBehavior.Default
+        elseif t == TOUCH then
+            FC.touches[i] = nil
+        elseif i.KeyCode == Enum.KeyCode.Thumbstick2 then
+            FC.gpLook = Vector2.zero
+        end
+    end))
+    table.insert(FC.conns, RunService.RenderStepped:Connect(FCStep))
+    return true
+end
+
+-- Died / respawned while in Freecam -> turn it off cleanly
+Track(LP.CharacterAdded:Connect(function()
+    if FC.on then
+        StopFreecam()
+        local o = Fluent.Options.FreecamToggle
+        if o and o.Value then o:SetValue(false) end
+    end
+end))
+
+--==================================================
+-- HUD (v2 — draggable + styled)
+--==================================================
+local HUD = {
+    gui = nil, frame = nil, rows = {},
+    fpsAccum = 0, fpsCount = 0, fps = 0,
+    dragging = false, dragStart = nil, startPos = nil,
+    conns = {},
+}
+
+local function DestroyHUD()
+    for _, c in ipairs(HUD.conns) do pcall(function() c:Disconnect() end) end
+    table.clear(HUD.conns)
+    if HUD.gui then HUD.gui:Destroy() end
+    HUD.gui, HUD.frame = nil, nil
+    HUD.rows = {}
+    HUD.dragging, HUD.dragStart, HUD.startPos = false, nil, nil
+end
+
+local function MakeHUDRow(parent, label, yOffset)
+    local row = New("Frame", {
+        BackgroundTransparency = 1,
+        Position = UDim2.new(0, 12, 0, yOffset),
+        Size = UDim2.new(1, -24, 0, 18),
+    }, parent)
+    New("TextLabel", {
+        BackgroundTransparency = 1,
+        Size = UDim2.new(0.45, 0, 1, 0),
+        Font = Enum.Font.GothamMedium, TextSize = 12,
+        TextColor3 = C(150, 155, 170),
+        TextXAlignment = Enum.TextXAlignment.Left,
+        Text = label,
+    }, row)
+    local value = New("TextLabel", {
+        BackgroundTransparency = 1,
+        Size = UDim2.new(0.55, 0, 1, 0),
+        Position = UDim2.new(0.45, 0, 0, 0),
+        Font = Enum.Font.GothamBold, TextSize = 12,
+        TextColor3 = C(240, 240, 245),
+        TextXAlignment = Enum.TextXAlignment.Right,
+        Text = "--",
+    }, row)
+    return value
+end
+
+local function CreateHUD()
+    if HUD.gui and HUD.gui.Parent then return end
+
+    HUD.gui = New("ScreenGui", {
+        Name = "DarkHubHUD", ResetOnSpawn = false,
+        DisplayOrder = 998, IgnoreGuiInset = true,
+    })
+    if not pcall(function() HUD.gui.Parent = (gethui and gethui()) or game:GetService("CoreGui") end) then
+        HUD.gui.Parent = LP:WaitForChild("PlayerGui")
+    end
+
+    HUD.frame = New("Frame", {
+        Name = "MainFrame",
+        BackgroundColor3 = C(18, 18, 24),
+        BackgroundTransparency = 0.1,
+        Position = UDim2.new(0, 20, 0, 20),
+        Size = UDim2.fromOffset(220, 130),
+        BorderSizePixel = 0,
+        ClipsDescendants = true,
+        Active = true,
+    }, HUD.gui)
+    New("UICorner", { CornerRadius = UDim.new(0, 10) }, HUD.frame)
+    New("UIStroke", {
+        Thickness = 1.5, Color = C(70, 70, 90), Transparency = 0.4,
+        ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+    }, HUD.frame)
+    New("UIGradient", {
+        Color = ColorSequence.new({
+            ColorSequenceKeypoint.new(0, C(35, 35, 48)),
+            ColorSequenceKeypoint.new(1, C(18, 18, 24)),
+        }),
+        Rotation = 90,
+    }, HUD.frame)
+
+    local titleBar = New("Frame", {
+        Name = "TitleBar",
+        BackgroundColor3 = C(30, 30, 40),
+        BackgroundTransparency = 0.2,
+        Size = UDim2.new(1, 0, 0, 26),
+        BorderSizePixel = 0,
+        Active = true,
+    }, HUD.frame)
+
+    local dot = New("Frame", {
+        BackgroundColor3 = C(90, 220, 150),
+        Size = UDim2.fromOffset(8, 8),
+        Position = UDim2.new(0, 12, 0.5, -4),
+        BorderSizePixel = 0,
+    }, titleBar)
+    New("UICorner", { CornerRadius = UDim.new(1, 0) }, dot)
+    New("UIStroke", { Thickness = 1, Color = C(90, 220, 150), Transparency = 0.6 }, dot)
+
+    New("TextLabel", {
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1, -70, 1, 0),
+        Position = UDim2.new(0, 28, 0, 0),
+        Font = Enum.Font.GothamBold, TextSize = 11,
+        TextColor3 = C(220, 220, 235),
+        TextXAlignment = Enum.TextXAlignment.Left,
+        Text = "DARK HUB  •  STATS",
+    }, titleBar)
+
+    for k = 1, 3 do
+        local h = New("Frame", {
+            BackgroundColor3 = C(150, 150, 165),
+            BackgroundTransparency = 0.3,
+            Size = UDim2.fromOffset(3, 3),
+            Position = UDim2.new(1, -20 + (k - 1) * 5, 0.5, -1.5),
+            BorderSizePixel = 0,
+        }, titleBar)
+        New("UICorner", { CornerRadius = UDim.new(1, 0) }, h)
+    end
+
+    New("Frame", {
+        BackgroundColor3 = C(70, 70, 90),
+        BackgroundTransparency = 0.6,
+        Size = UDim2.new(1, 0, 0, 1),
+        Position = UDim2.new(0, 0, 0, 26),
+        BorderSizePixel = 0,
+    }, HUD.frame)
+
+    HUD.rows.FPS     = MakeHUDRow(HUD.frame, "FPS",     34)
+    HUD.rows.Ping    = MakeHUDRow(HUD.frame, "PING",    56)
+    HUD.rows.Pos     = MakeHUDRow(HUD.frame, "POS",     78)
+    HUD.rows.Players = MakeHUDRow(HUD.frame, "PLAYERS", 100)
+
+    local function isPointer(i, move)
+        local t = i.UserInputType
+        return t == Enum.UserInputType.Touch or t == (move and Enum.UserInputType.MouseMovement or Enum.UserInputType.MouseButton1)
+    end
+
+    local function startDrag(i)
+        if isPointer(i) then
+            HUD.dragging, HUD.dragStart, HUD.startPos = true, i.Position, HUD.frame.Position
+        end
+    end
+
+    table.insert(HUD.conns, HUD.frame.InputBegan:Connect(startDrag))
+    table.insert(HUD.conns, titleBar.InputBegan:Connect(startDrag))
+
+    table.insert(HUD.conns, UIS.InputChanged:Connect(function(i)
+        if not (HUD.dragging and isPointer(i, true)) then return end
+        local d = i.Position - HUD.dragStart
+        local nx = HUD.startPos.X.Offset + d.X
+        local ny = HUD.startPos.Y.Offset + d.Y
+        local vp = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(1280, 720)
+        local sz = HUD.frame.AbsoluteSize
+        nx = math.clamp(nx, 0, math.max(0, vp.X - sz.X))
+        ny = math.clamp(ny, 0, math.max(0, vp.Y - sz.Y))
+        HUD.frame.Position = UDim2.fromOffset(nx, ny)
+    end))
+
+    table.insert(HUD.conns, UIS.InputEnded:Connect(function(i)
+        if HUD.dragging and isPointer(i) then
+            HUD.dragging = false
+        end
+    end))
+end
+
+local function UpdateHUDText()
+    if not HUD.frame or not HUD.gui or not HUD.gui.Enabled then return end
+    local ping = 0
+    pcall(function() ping = math.floor(Stats.Network.ServerStatsItem["Data Ping"]:GetValue() + 0.5) end)
+    local root = GetRoot()
+    local px, py, pz = 0, 0, 0
+    if root then px, py, pz = root.Position.X, root.Position.Y, root.Position.Z end
+
+    local fpsVal = HUD.rows.FPS
+    if fpsVal then
+        fpsVal.Text = tostring(HUD.fps)
+        fpsVal.TextColor3 = HUD.fps >= 50 and C(90, 220, 150)
+            or (HUD.fps >= 30 and C(255, 200, 80) or C(255, 100, 100))
+    end
+
+    local pingVal = HUD.rows.Ping
+    if pingVal then
+        pingVal.Text = ping .. " ms"
+        pingVal.TextColor3 = ping < 100 and C(90, 220, 150)
+            or (ping < 200 and C(255, 200, 80) or C(255, 100, 100))
+    end
+
+    local posVal = HUD.rows.Pos
+    if posVal then
+        posVal.Text = string.format("%.0f, %.0f, %.0f", px, py, pz)
+    end
+
+    local playersVal = HUD.rows.Players
+    if playersVal then
+        playersVal.Text = tostring(#Players:GetPlayers())
+    end
+end
+
+local function UpdateHUDFps(dt)
+    HUD.fpsAccum += dt
+    HUD.fpsCount += 1
+    if HUD.fpsAccum >= 0.5 then
+        HUD.fps = math.floor(HUD.fpsCount / HUD.fpsAccum + 0.5)
+        HUD.fpsAccum, HUD.fpsCount = 0, 0
+    end
+end
+
+--==================================================
 -- VISUAL
 --==================================================
 local Saved, SavedAtmo = {}, {}
@@ -722,12 +1204,9 @@ local FogProps = { "FogEnd" }
 local BoostProps = { "GlobalShadows", "EnvironmentDiffuseScale", "EnvironmentSpecularScale" }
 
 local function Save(props)
-    for _, p in ipairs(props) do
-        if Saved[p] == nil then Saved[p] = Lighting[p] end
-    end
+    for _, p in ipairs(props) do if Saved[p] == nil then Saved[p] = Lighting[p] end end
 end
 
--- ข้าม GlobalShadows ถ้าระบบอื่น (Bright/Boost) ยังต้องใช้ค่าอยู่
 local function Restore(props)
     for _, p in ipairs(props) do
         if Saved[p] ~= nil then
@@ -736,10 +1215,7 @@ local function Restore(props)
                 if props == BrightProps and Settings.Boost then inUse = true
                 elseif props == BoostProps and Settings.BrightOn then inUse = true end
             end
-            if not inUse then
-                Lighting[p] = Saved[p]
-                Saved[p] = nil
-            end
+            if not inUse then Lighting[p] = Saved[p] Saved[p] = nil end
         end
     end
 end
@@ -752,9 +1228,7 @@ local function RestoreFog()
     end
 end
 
-local function SetL(prop, val)
-    if Lighting[prop] ~= val then Lighting[prop] = val end
-end
+local function SetL(prop, val) if Lighting[prop] ~= val then Lighting[prop] = val end end
 
 local function ApplyBrightnessOnly()
     if not Settings.BrightOn then return end
@@ -770,10 +1244,8 @@ end
 
 local function ApplyVisuals()
     ApplyBrightnessOnly()
-
     if Settings.NoFog then
-        Save(FogProps)
-        SetL("FogEnd", 1e6)
+        Save(FogProps) SetL("FogEnd", 1e6)
         local atm = Lighting:FindFirstChildOfClass("Atmosphere")
         if atm then
             SavedAtmo[atm] = SavedAtmo[atm] or { atm.Density, atm.Haze }
@@ -781,7 +1253,6 @@ local function ApplyVisuals()
             if atm.Haze ~= 0 then atm.Haze = 0 end
         end
     end
-
     if Settings.Boost then
         Save(BoostProps)
         SetL("GlobalShadows", false)
@@ -790,7 +1261,6 @@ local function ApplyVisuals()
     end
 end
 
--- เขียนค่าความสว่างใหม่ทุกเฟรม (60 ครั้ง/วินาที) กันการกระพริบ
 Track(RunService.RenderStepped:Connect(function()
     if Fluent.Unloaded or not Settings.BrightOn then return end
     ApplyBrightnessOnly()
@@ -805,8 +1275,7 @@ local MapProps = { "ColorMap", "NormalMap", "MetalnessMap", "RoughnessMap" }
 
 local function Mod(inst, prop, val)
     if inst[prop] == val then return end
-    local rec = Boost[inst]
-    if not rec then rec = {} Boost[inst] = rec end
+    local rec = Boost[inst] if not rec then rec = {} Boost[inst] = rec end
     if rec[prop] == nil then rec[prop] = inst[prop] end
     inst[prop] = val
 end
@@ -823,24 +1292,19 @@ local function Reduce(inst)
         for _, p in ipairs(MapProps) do pcall(Mod, inst, p, "") end
     elseif inst:IsA("Terrain") then
         pcall(Mod, inst, "Decoration", false)
-        Mod(inst, "WaterWaveSize", 0)
-        Mod(inst, "WaterWaveSpeed", 0)
-        Mod(inst, "WaterReflectance", 0)
+        Mod(inst, "WaterWaveSize", 0) Mod(inst, "WaterWaveSpeed", 0) Mod(inst, "WaterReflectance", 0)
     elseif inst:IsA("BasePart") then
         if inst.Name == "DarkHubWater" then return end
         Mod(inst, "Material", Enum.Material.SmoothPlastic)
-        Mod(inst, "Reflectance", 0)
-        Mod(inst, "CastShadow", false)
+        Mod(inst, "Reflectance", 0) Mod(inst, "CastShadow", false)
         if inst:IsA("MeshPart") then
-            Mod(inst, "TextureID", "")
-            Mod(inst, "RenderFidelity", Enum.RenderFidelity.Performance)
+            Mod(inst, "TextureID", "") Mod(inst, "RenderFidelity", Enum.RenderFidelity.Performance)
         end
     end
 end
 
 local function SetBoost(on)
-    BoostGen += 1
-    local gen = BoostGen
+    BoostGen += 1 local gen = BoostGen
     for _, c in ipairs(BoostConn) do c:Disconnect() end
     table.clear(BoostConn)
     if on then
@@ -854,13 +1318,12 @@ local function SetBoost(on)
             table.insert(BoostConn, root.DescendantAdded:Connect(function(i) pcall(Reduce, i) end))
         end
         task.spawn(function()
-            local slice = Slicer()
             for _, root in ipairs(roots) do
-                for _, inst in ipairs(root:GetDescendants()) do
-                    if gen ~= BoostGen then return end
+                if gen ~= BoostGen then return end
+                WalkTree(root, function(inst)
+                    if gen ~= BoostGen then return true end
                     pcall(Reduce, inst)
-                    slice()
-                end
+                end, Slicer(0.008))
             end
             Note(T("boost_t"), T("n_boost_done"), 3)
         end)
@@ -870,12 +1333,11 @@ local function SetBoost(on)
             OrigQuality = nil
         end)
         task.spawn(function()
-            local slice = Slicer()
+            local slice = Slicer(0.006)
             for inst, rec in next, Boost do
                 if gen ~= BoostGen then return end
                 for p, v in next, rec do pcall(Put, inst, p, v) end
-                Boost[inst] = nil
-                slice()
+                Boost[inst] = nil slice()
             end
         end)
     end
@@ -894,7 +1356,6 @@ local followOffset = CFrame.new(0, Tracking.Height, Tracking.Dist)
 local function UpdateOffset() followOffset = CFrame.new(0, Tracking.Height, Tracking.Dist) end
 
 local specConns = {}
-
 local function SpecApply()
     local target, cam = Tracking.Spec, workspace.CurrentCamera
     if not (target and cam) then return end
@@ -919,26 +1380,17 @@ local function StartSpectate(plr)
     Tracking.Spec = plr
     local function hookCam()
         local cam = workspace.CurrentCamera
-        if cam then
-            table.insert(specConns, cam:GetPropertyChangedSignal("CameraSubject"):Connect(SpecApply))
-        end
+        if cam then table.insert(specConns, cam:GetPropertyChangedSignal("CameraSubject"):Connect(SpecApply)) end
     end
     hookCam()
-    table.insert(specConns, workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
-        hookCam()
-        SpecApply()
-    end))
+    table.insert(specConns, workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function() hookCam() SpecApply() end))
     table.insert(specConns, plr.CharacterAdded:Connect(function(char)
-        task.spawn(function()
-            char:WaitForChild("Humanoid", 5)
-            if Tracking.Spec == plr then SpecApply() end
-        end)
+        task.spawn(function() char:WaitForChild("Humanoid", 5) if Tracking.Spec == plr then SpecApply() end end)
     end))
     SpecApply()
 end
 
 local followConns = {}
-
 local function GetTargetRoot(ch)
     if not ch then return nil end
     return ch:FindFirstChild("HumanoidRootPart") or ch.PrimaryPart
@@ -967,14 +1419,12 @@ local function StopFollow()
     if not was then return end
     ClipRelease("follow")
     local hum = GetHumanoid()
-    if hum then
-        hum.PlatformStand = false
-        hum:ChangeState(Enum.HumanoidStateType.GettingUp)
-    end
+    if hum then hum.PlatformStand = false hum:ChangeState(Enum.HumanoidStateType.GettingUp) end
 end
 
 local function StartFollow(plr)
     if Flying then StopFly() SetOpt("FlyToggle", false) end
+    if FC.on then StopFreecam() SetOpt("FreecamToggle", false) end
     if Settings.SpinOn then SetOpt("SpinToggle", false) end
     Tracking.Follow = plr
     if #followConns > 0 then return end
@@ -982,9 +1432,7 @@ local function StartFollow(plr)
     table.insert(followConns, RunService.Heartbeat:Connect(function()
         local target = Tracking.Follow
         if target and target.Parent ~= Players then
-            StopFollow()
-            SetOpt("FollowToggle", false)
-            Note(T("fol_t"), T("n_fol_left"))
+            StopFollow() SetOpt("FollowToggle", false) Note(T("fol_t"), T("n_fol_left"))
             return
         end
         StickStep()
@@ -994,51 +1442,83 @@ end
 
 Track(Players.PlayerRemoving:Connect(function(p)
     if p == Tracking.Spec then
-        StopSpectate()
-        SetOpt("SpecToggle", false)
-        Note(T("spec_t"), T("n_spec_left"))
+        StopSpectate() SetOpt("SpecToggle", false) Note(T("spec_t"), T("n_spec_left"))
     end
     if p == Tracking.Follow then
-        StopFollow()
-        SetOpt("FollowToggle", false)
-        Note(T("fol_t"), T("n_fol_left"))
+        StopFollow() SetOpt("FollowToggle", false) Note(T("fol_t"), T("n_fol_left"))
     end
 end))
+
+--==================================================
+-- SYNC TOGGLES
+--==================================================
+local function SyncToggle(id, key, onChange)
+    local o = Fluent.Options[id]
+    if not o then return end
+    local v = o.Value and true or false
+    if v ~= Settings[key] then
+        Settings[key] = v
+        if onChange then pcall(onChange, v) end
+    end
+end
+
+local function SyncToggles()
+    SyncToggle("WalkToggle", "WalkOn", function(v) if not v then RestoreWalk() end end)
+    SyncToggle("JumpToggle", "JumpOn", function(v) if not v then RestoreJump() end end)
+    SyncToggle("InfJumpToggle", "InfJump")
+    SyncToggle("NoclipToggle", "NoclipOn", function(v) if v then ClipAcquire("noclip") else ClipRelease("noclip") end end)
+    SyncToggle("WaterToggle", "WaterOn", function(v) if v then StartWater() else StopWater() end end)
+    SyncToggle("SpinToggle", "SpinOn", function(v) if v then ApplySpin() else StopSpin() end end)
+    SyncToggle("SpinReverse", "SpinReverse", ApplySpin)
+    SyncToggle("VoidToggle", "AntiVoid")
+    SyncToggle("ClickTPToggle", "ClickTP")
+    SyncToggle("ZoomToggle", "Zoom", ApplyZoom)
+    SyncToggle("AFKToggle", "AntiAFK")
+    SyncToggle("BrightToggle", "BrightOn", function(v) if v then ApplyBrightnessOnly() else Restore(BrightProps) end end)
+    SyncToggle("FogToggle", "NoFog", function(v) if v then ApplyVisuals() else RestoreFog() end end)
+    SyncToggle("BoostToggle", "Boost", function(v) SetBoost(v) if not v then Restore(BoostProps) end end)
+    SyncToggle("AntiFlingToggle", "AntiFling")
+    SyncToggle("FreecamToggle", "Freecam", function(v) if v then StartFreecam() else StopFreecam() end end)
+    SyncToggle("HUDToggle", "HUD", function(v)
+        if v then CreateHUD() if HUD.gui then HUD.gui.Enabled = true end
+        elseif HUD.gui then HUD.gui.Enabled = false end
+    end)
+end
 
 --==================================================
 -- MAIN LOOP
 --==================================================
 local loop
-local accStats, accVis, accSafe = 0, 0, 0
+local accStats, accVis, accSafe, accHUD = 0, 0, 0, 0
 loop = RunService.Heartbeat:Connect(function(dt)
     if not Fluent.Unloaded then
         accStats += dt
-        if accStats >= 0.1 then accStats = 0 ApplyStats() ApplySpin() end
+        if accStats >= 0.1 then
+            accStats = 0
+            pcall(SyncToggles) pcall(ApplyStats) pcall(ApplySpin)
+        end
         accVis += dt
-        if accVis >= 0.5 then accVis = 0 ApplyVisuals() end
+        if accVis >= 0.5 then accVis = 0 pcall(ApplyVisuals) end
         accSafe += dt
-        if accSafe >= 0.25 then accSafe = 0 SafetyTick() end
-        UpdateESP()
+        if accSafe >= 0.25 then accSafe = 0 pcall(SafetyTick) end
+        pcall(AntiFlingTick)
+        if Settings.HUD then
+            pcall(UpdateHUDFps, dt)
+            accHUD += dt
+            if accHUD >= 0.5 then accHUD = 0 pcall(UpdateHUDText) end
+        end
+        pcall(UpdateESP)
         return
     end
     loop:Disconnect()
-    ClearESP()
-    StopFly()
-    StopSpectate()
-    StopFollow()
+    ClearESP() StopFly() StopSpectate() StopFollow() StopFreecam()
     Settings.SpinOn, Settings.NoclipOn, Settings.WaterOn = false, false, false
-    StopSpin()
-    ClipRelease("noclip")
-    StopWater()
-    ApplyZoom(false)
+    StopSpin() ClipRelease("noclip") StopWater() ApplyZoom(false)
     Settings.WalkOn, Settings.JumpOn, Settings.BrightOn, Settings.NoFog = false, false, false, false
-    RestoreWalk()
-    RestoreJump()
-    Restore(BrightProps)
-    RestoreFog()
-    Settings.Boost = false
-    SetBoost(false)
-    Restore(BoostProps)
+    Settings.Freecam, Settings.HUD = false, false
+    RestoreWalk() RestoreJump() Restore(BrightProps) RestoreFog()
+    DestroyHUD()
+    Settings.Boost = false SetBoost(false) Restore(BoostProps)
     for _, c in ipairs(Links) do c:Disconnect() end
     table.clear(Links)
 end)
@@ -1048,7 +1528,7 @@ end)
 --==================================================
 local Window = Fluent:CreateWindow({
     Title = "DARK HUB", SubTitle = "Movement  •  Players  •  Visual  •  Utility", TabWidth = 160,
-    Size = UDim2.fromOffset(600, 480), Acrylic = true, Theme = "Dark",
+    Size = UDim2.fromOffset(600, 480), Acrylic = false, Theme = "Dark",
     MinimizeKey = Enum.KeyCode.LeftControl,
 })
 
@@ -1064,13 +1544,17 @@ local function Level(v) return math.clamp(math.floor(v + 0.5), 1, MAX_LEVEL) end
 
 local function AddToggle(sec, id, title, desc, default, fn)
     local t = sec:AddToggle(id, { Title = title, Description = desc, Default = default })
-    t:OnChanged(function() fn(t.Value) end)
+    t:OnChanged(function()
+        task.defer(function() if Fluent.Unloaded then return end pcall(fn, t.Value) end)
+    end)
     return t
 end
 
 local function AddSlider(sec, id, title, desc, default, min, max, fn)
     local s = sec:AddSlider(id, { Title = title, Description = desc, Default = default, Min = min, Max = max, Rounding = 0 })
-    s:OnChanged(fn)
+    s:OnChanged(function()
+        task.defer(function() if Fluent.Unloaded then return end pcall(fn, s.Value) end)
+    end)
     return s
 end
 
@@ -1078,15 +1562,33 @@ local function SwapText(oldLang, newLang)
     local ok, root = pcall(function() return Fluent.GUI or Window.Root end)
     if not (ok and root) then return false end
     local rev, to = REV[oldLang], STR[newLang]
-    task.spawn(function()
-        local slice = Slicer()
-        for _, inst in ipairs(root:GetDescendants()) do
-            if inst:IsA("TextLabel") or inst:IsA("TextButton") then
-                local k = rev[inst.Text]
-                if k and to[k] and inst.Text ~= to[k] then inst.Text = to[k] end
-            end
-            slice()
+    local patterns = {}
+    for k, v in next, STR[oldLang] do
+        if type(v) == "string" and v:find("%%d") then
+            local p = v:gsub("[%(%)%.%%%+%-%*%?%[%]%^%$]", "%%%0"):gsub("%%%%d", "(%%d+)")
+            patterns[#patterns+1] = { key = k, pattern = "^" .. p .. "$" }
         end
+    end
+    task.spawn(function()
+        WalkTree(root, function(inst)
+            if not (inst:IsA("TextLabel") or inst:IsA("TextButton")) then return end
+            local k = rev[inst.Text]
+            if k and to[k] then
+                if inst.Text ~= to[k] then inst.Text = to[k] end
+                return
+            end
+            for _, pt in ipairs(patterns) do
+                local num = inst.Text:match(pt.pattern)
+                if num then
+                    local tmpl = to[pt.key]
+                    if tmpl then
+                        local ok2, newTxt = pcall(string.format, tmpl, tonumber(num))
+                        if ok2 and inst.Text ~= newTxt then inst.Text = newTxt end
+                    end
+                    break
+                end
+            end
+        end)
     end)
     return true
 end
@@ -1100,10 +1602,9 @@ do
     toggle = AddToggle(sec, "FlyToggle", T("fly_t"), T("fly_d"), false, function(on)
         if on then
             if Tracking.Follow then StopFollow() SetOpt("FollowToggle", false) end
+            if FC.on then StopFreecam() SetOpt("FreecamToggle", false) end
             if not Flying and not StartFly() then toggle:SetValue(false) end
-        elseif Flying then
-            StopFly()
-        end
+        elseif Flying then StopFly() end
     end)
     AddSlider(sec, "FlySpeed", T("flyspd_t"), T("lvl16_d"), Settings.FlySpeed, 1, MAX_LEVEL,
         function(v) Settings.FlySpeed = Level(v) end)
@@ -1123,9 +1624,7 @@ do
     end)
     AddSlider(sec, "JumpLevel", T("jumplv_t"), T("lvl50_d"), 1, 1, MAX_LEVEL,
         function(v) Settings.JumpLevel = Level(v) ApplyStats() end)
-    AddToggle(sec, "InfJumpToggle", T("infjump_t"), T("infjump_d"), false, function(on)
-        Settings.InfJump = on
-    end)
+    AddToggle(sec, "InfJumpToggle", T("infjump_t"), T("infjump_d"), false, function(on) Settings.InfJump = on end)
 end
 
 do
@@ -1147,23 +1646,19 @@ do
         if on then
             if Tracking.Follow then StopFollow() SetOpt("FollowToggle", false) end
             ApplySpin()
-        else
-            StopSpin()
-        end
+        else StopSpin() end
     end)
     AddSlider(sec, "SpinLevel", T("spinlv_t"), T("lvlspin_d"), Settings.SpinLevel, 1, MAX_LEVEL,
         function(v) Settings.SpinLevel = Level(v) ApplySpin() end)
     AddToggle(sec, "SpinReverse", T("spinrev_t"), T("spinrev_d"), false, function(on)
-        Settings.SpinReverse = on
-        ApplySpin()
+        Settings.SpinReverse = on ApplySpin()
     end)
 end
 
 do
     local sec = Tabs.Move:AddSection(T("sec_safety"))
-    AddToggle(sec, "VoidToggle", T("void_t"), T("void_d"), Settings.AntiVoid, function(on)
-        Settings.AntiVoid = on
-    end)
+    AddToggle(sec, "VoidToggle", T("void_t"), T("void_d"), Settings.AntiVoid, function(on) Settings.AntiVoid = on end)
+    AddToggle(sec, "AntiFlingToggle", T("fling_t"), T("fling_d"), Settings.AntiFling, function(on) Settings.AntiFling = on end)
 end
 
 --==================================================
@@ -1187,10 +1682,8 @@ local function MakePicker(sec, id, title, desc, onSwitch)
         if #labels == 0 then labels = { T(query == "" and "no_players" or "no_match") } end
         return labels
     end
-    local input = sec:AddInput(id .. "Search", {
-        Title = T("search_t"), Description = T("search_d"),
-        Default = "", Placeholder = "Name / @username", Numeric = false, Finished = false,
-    })
+    local input = sec:AddInput(id .. "Search", { Title = T("search_t"), Description = T("search_d"),
+        Default = "", Placeholder = "Name / @username", Numeric = false, Finished = false })
     drop = sec:AddDropdown(id, { Title = title, Description = desc, Values = Build(), Default = 1 })
     drop:OnChanged(function() onSwitch(map[drop.Value]) end)
     local function Rebuild()
@@ -1203,10 +1696,7 @@ local function MakePicker(sec, id, title, desc, onSwitch)
     local function Schedule(delay)
         if pending then return end
         pending = true
-        task.delay(delay, function()
-            pending = false
-            if not Fluent.Unloaded then Rebuild() end
-        end)
+        task.delay(delay, function() pending = false if not Fluent.Unloaded then Rebuild() end end)
     end
     input:OnChanged(function(v)
         local q = tostring(v or ""):lower()
@@ -1246,9 +1736,7 @@ end
 do
     local sec = Tabs.Players:AddSection(T("sec_quick"))
     local savedCF
-    AddToggle(sec, "ClickTPToggle", T("clicktp_t"), T("clicktp_d"), false, function(on)
-        Settings.ClickTP = on
-    end)
+    AddToggle(sec, "ClickTPToggle", T("clicktp_t"), T("clicktp_d"), false, function(on) Settings.ClickTP = on end)
     sec:AddButton({
         Title = T("savepos_t"), Description = T("savepos_d"),
         Callback = function()
@@ -1261,21 +1749,56 @@ do
         Callback = function()
             local root = GetRoot()
             if not savedCF then return Note(T("nt_tp"), T("n_pos_none"), 3) end
-            if root then
-                root.AssemblyLinearVelocity = Vector3.zero
-                root.CFrame = savedCF
-            end
+            if root then root.AssemblyLinearVelocity = Vector3.zero root.CFrame = savedCF end
         end,
     })
+end
+
+do
+    local sec = Tabs.Players:AddSection(T("sec_wp"))
+    local wpInputs = {}
+    for i = 1, 5 do
+        local idx = i
+        wpInputs[idx] = sec:AddInput("WP" .. idx .. "Name", {
+            Title = T("wp_nametmpl", idx), Description = T("wp_named"),
+            Default = WaypointNames[idx] or ("Slot " .. idx),
+            Placeholder = "Slot " .. idx, Numeric = false, Finished = false,
+        })
+        wpInputs[idx]:OnChanged(function(v)
+            WaypointNames[idx] = (v ~= "" and v) or ("Slot " .. idx)
+        end)
+        sec:AddButton({
+            Title = T("wp_savetmpl", idx), Description = T("wp_saved"),
+            Callback = function()
+                local root = GetRoot()
+                if root then
+                    Waypoints[idx] = root.CFrame
+                    SaveWaypointsToFile()
+                    Note(T("nt_wp"), T("n_wp_saved"), 3)
+                end
+            end,
+        })
+        sec:AddButton({
+            Title = T("wp_gotmpl", idx), Description = T("wp_god"),
+            Callback = function()
+                local wp = Waypoints[idx]
+                if not wp then return Note(T("nt_wp"), T("wp_empty"), 3) end
+                local root = GetRoot()
+                if root then
+                    root.AssemblyLinearVelocity = Vector3.zero
+                    root.CFrame = wp
+                    Note(T("nt_wp"), T("n_wp_go"), 3)
+                end
+            end,
+        })
+    end
 end
 
 do
     local specSec = Tabs.Players:AddSection(T("sec_spec"))
     local specToggle
     local GetSpec = MakePicker(specSec, "SpecPlayer", T("spec_pick_t"), T("spec_pick_d"),
-        function(plr)
-            if specToggle and specToggle.Value and plr then StartSpectate(plr) end
-        end)
+        function(plr) if specToggle and specToggle.Value and plr then StartSpectate(plr) end end)
     specToggle = AddToggle(specSec, "SpecToggle", T("spec_t"), T("spec_d"), false, function(on)
         if on then
             local plr = GetSpec()
@@ -1284,19 +1807,15 @@ do
                 if specToggle then specToggle:SetValue(false) end
                 return
             end
-            StartSpectate(plr)
-            Note(T("spec_t"), T("n_spec_on", plr.DisplayName), 3)
-        else
-            StopSpectate()
-        end
+            if FC.on then StopFreecam() SetOpt("FreecamToggle", false) end
+            StartSpectate(plr) Note(T("spec_t"), T("n_spec_on", plr.DisplayName), 3)
+        else StopSpectate() end
     end)
 
     local folSec = Tabs.Players:AddSection(T("sec_fol"))
     local folToggle
     local GetFol = MakePicker(folSec, "FollowPlayer", T("fol_pick_t"), T("fol_pick_d"),
-        function(plr)
-            if folToggle and folToggle.Value and plr then StartFollow(plr) end
-        end)
+        function(plr) if folToggle and folToggle.Value and plr then StartFollow(plr) end end)
     folToggle = AddToggle(folSec, "FollowToggle", T("fol_t"), T("fol_d"), false, function(on)
         if on then
             local plr = GetFol()
@@ -1305,28 +1824,20 @@ do
                 if folToggle then folToggle:SetValue(false) end
                 return
             end
-            StartFollow(plr)
-            Note(T("fol_t"), T("n_fol_on", plr.DisplayName), 3)
-        else
-            StopFollow()
-        end
+            StartFollow(plr) Note(T("fol_t"), T("n_fol_on", plr.DisplayName), 3)
+        else StopFollow() end
     end)
-    folSec:AddSlider("FollowDist", {
-        Title = T("fol_dist_t"), Description = T("fol_dist_d"),
-        Default = Tracking.Dist, Min = 0, Max = 30, Rounding = 1,
-    }):OnChanged(function(v) Tracking.Dist = v UpdateOffset() end)
-    folSec:AddSlider("FollowHeight", {
-        Title = T("fol_h_t"), Description = T("fol_h_d"),
-        Default = Tracking.Height, Min = -5, Max = 15, Rounding = 1,
-    }):OnChanged(function(v) Tracking.Height = v UpdateOffset() end)
+    folSec:AddSlider("FollowDist", { Title = T("fol_dist_t"), Description = T("fol_dist_d"),
+        Default = Tracking.Dist, Min = 0, Max = 30, Rounding = 1 })
+        :OnChanged(function(v) Tracking.Dist = v UpdateOffset() end)
+    folSec:AddSlider("FollowHeight", { Title = T("fol_h_t"), Description = T("fol_h_d"),
+        Default = Tracking.Height, Min = -5, Max = 15, Rounding = 1 })
+        :OnChanged(function(v) Tracking.Height = v UpdateOffset() end)
     folSec:AddButton({
         Title = T("trk_stop_t"), Description = T("trk_stop_d"),
         Callback = function()
-            SetOpt("SpecToggle", false)
-            SetOpt("FollowToggle", false)
-            StopSpectate()
-            StopFollow()
-            Note(T("nt_trk"), T("n_trk_stopped"), 3)
+            SetOpt("SpecToggle", false) SetOpt("FollowToggle", false)
+            StopSpectate() StopFollow() Note(T("nt_trk"), T("n_trk_stopped"), 3)
         end,
     })
 end
@@ -1339,13 +1850,10 @@ do
         local sec = Tabs.Visual:AddSection(T("sec_" .. kind))
         AddToggle(sec, "ESP" .. kind, T("esp_" .. kind .. "_t"), T("esp_" .. kind .. "_d"), false, function(v) SetCat(kind, v) end)
         AddToggle(sec, "Info" .. kind, T("info_" .. kind .. "_t"), T("info_" .. kind .. "_d"), true, function(v) Cats[kind].info = v end)
-        local picker = sec:AddColorpicker("Color" .. kind, {
-            Title = T("col_" .. kind .. "_t"), Description = T("col_" .. kind .. "_d"), Default = Cats[kind].color,
-        })
+        local picker = sec:AddColorpicker("Color" .. kind, { Title = T("col_" .. kind .. "_t"), Description = T("col_" .. kind .. "_d"), Default = Cats[kind].color })
         picker:OnChanged(function() Cats[kind].color = picker.Value end)
     end
-    BuildESP("Player")
-    BuildESP("Item")
+    BuildESP("Player") BuildESP("Item")
 end
 
 do
@@ -1354,8 +1862,7 @@ do
         Settings.BrightOn = on
         if not on then Restore(BrightProps) else ApplyBrightnessOnly() end
     end)
-    AddSlider(sec, "BrightLevel", T("light_t"), T("light_d"),
-        Settings.BrightLevel, 1, 10,
+    AddSlider(sec, "BrightLevel", T("light_t"), T("light_d"), Settings.BrightLevel, 1, 10,
         function(v) Settings.BrightLevel = math.clamp(math.floor(v + 0.5), 1, 10) ApplyBrightnessOnly() end)
     AddToggle(sec, "FogToggle", T("fog_t"), T("fog_d"), false, function(on)
         Settings.NoFog = on
@@ -1366,8 +1873,7 @@ end
 do
     local sec = Tabs.Visual:AddSection(T("sec_perf"))
     AddToggle(sec, "BoostToggle", T("boost_t"), T("boost_d"), false, function(on)
-        Settings.Boost = on
-        SetBoost(on)
+        Settings.Boost = on SetBoost(on)
         if not on then Restore(BoostProps) end
     end)
 end
@@ -1377,37 +1883,40 @@ end
 --==================================================
 do
     local sec = Tabs.Util:AddSection(T("sec_cam"))
-    AddToggle(sec, "ZoomToggle", T("zoom_t"), T("zoom_d"), false, function(on)
-        Settings.Zoom = on
-        ApplyZoom(on)
+    AddToggle(sec, "ZoomToggle", T("zoom_t"), T("zoom_d"), false, function(on) Settings.Zoom = on ApplyZoom(on) end)
+    AddToggle(sec, "FreecamToggle", T("freecam_t"), T("freecam_d"), false, function(on)
+        Settings.Freecam = on
+        if on then
+            if Flying then StopFly() SetOpt("FlyToggle", false) end
+            if Tracking.Follow then StopFollow() SetOpt("FollowToggle", false) end
+            if Tracking.Spec then StopSpectate() SetOpt("SpecToggle", false) end
+            StartFreecam()
+        else StopFreecam() end
+    end)
+end
+
+do
+    local sec = Tabs.Util:AddSection(T("sec_hud"))
+    AddToggle(sec, "HUDToggle", T("hud_t"), T("hud_d"), false, function(on)
+        Settings.HUD = on
+        if on then CreateHUD() if HUD.gui then HUD.gui.Enabled = true end
+        elseif HUD.gui then HUD.gui.Enabled = false end
     end)
 end
 
 do
     local sec = Tabs.Util:AddSection(T("sec_sess"))
-    AddToggle(sec, "AFKToggle", T("afk_t"), T("afk_d"), Settings.AntiAFK, function(on)
-        Settings.AntiAFK = on
-    end)
-    sec:AddButton({
-        Title = T("respawn_t"), Description = T("respawn_d"),
-        Callback = function()
-            local hum = GetHumanoid()
-            if hum then hum.Health = 0 end
-        end,
-    })
-    sec:AddButton({
-        Title = T("rejoin_t"), Description = T("rejoin_d"),
+    AddToggle(sec, "AFKToggle", T("afk_t"), T("afk_d"), Settings.AntiAFK, function(on) Settings.AntiAFK = on end)
+    sec:AddButton({ Title = T("respawn_t"), Description = T("respawn_d"),
+        Callback = function() local hum = GetHumanoid() if hum then hum.Health = 0 end end })
+    sec:AddButton({ Title = T("rejoin_t"), Description = T("rejoin_d"),
         Callback = function()
             Note("DARK HUB", T("n_rejoin"), 3)
             pcall(function()
-                if #Players:GetPlayers() <= 1 then
-                    TeleportService:Teleport(game.PlaceId, LP)
-                else
-                    TeleportService:TeleportToPlaceInstance(game.PlaceId, game.JobId, LP)
-                end
+                if #Players:GetPlayers() <= 1 then TeleportService:Teleport(game.PlaceId, LP)
+                else TeleportService:TeleportToPlaceInstance(game.PlaceId, game.JobId, LP) end
             end)
-        end,
-    })
+        end })
 end
 
 --==================================================
@@ -1415,16 +1924,12 @@ end
 --==================================================
 do
     local sec = Tabs.Settings:AddSection(T("sec_lang"))
-    local drop = sec:AddDropdown("Language", {
-        Title = T("lang_t"), Description = T("lang_d"),
-        Values = LANG_NAMES, Default = (Lang == "th") and 2 or 1,
-    })
+    local drop = sec:AddDropdown("Language", { Title = T("lang_t"), Description = T("lang_d"),
+        Values = LANG_NAMES, Default = (Lang == "th") and 2 or 1 })
     drop:OnChanged(function(v)
         local new = (v == LANG_NAMES[2]) and "th" or "en"
         if new == Lang then return end
-        local old = Lang
-        Lang = new
-        SaveLang()
+        local old = Lang Lang = new SaveLang()
         for _, fn in ipairs(LangHooks) do pcall(fn) end
         local ok = SwapText(old, new)
         Note("DARK HUB", T(ok and "n_lang" or "n_lang_restart"), 3)
@@ -1438,6 +1943,9 @@ SaveManager:SetIgnoreIndexes({
     "FlyToggle", "NoclipToggle", "WaterToggle", "SpinToggle", "ClickTPToggle",
     "TPPlayer", "SpecToggle", "SpecPlayer", "FollowToggle", "FollowPlayer", "Language",
     "TPPlayerSearch", "SpecPlayerSearch", "FollowPlayerSearch",
+    "BrightToggle", "FogToggle", "BoostToggle",
+    "FreecamToggle", "HUDToggle",
+    "WP1Name", "WP2Name", "WP3Name", "WP4Name", "WP5Name",
 })
 
 InterfaceManager:SetFolder("DarkHub")
@@ -1447,51 +1955,40 @@ do
     pcall(function() InterfaceManager:LoadSettings() end)
     local S = InterfaceManager.Settings or {}
     local sec = Tabs.Settings:AddSection(T("sec_iface"))
-    local themeDrop = sec:AddDropdown("InterfaceTheme", {
-        Title = T("theme_t"), Description = T("theme_d"), Values = Fluent.Themes,
-        Default = table.find(Fluent.Themes, S.Theme or "Dark") or 1,
-    })
+    local themeDrop = sec:AddDropdown("InterfaceTheme", { Title = T("theme_t"), Description = T("theme_d"),
+        Values = Fluent.Themes, Default = table.find(Fluent.Themes, S.Theme or "Dark") or 1 })
     themeDrop:OnChanged(function(v)
-        Fluent:SetTheme(v)
-        S.Theme = v
+        Fluent:SetTheme(v) S.Theme = v
         pcall(function() InterfaceManager:SaveSettings() end)
     end)
     local key = sec:AddKeybind("MenuKeybind", { Title = T("menukey_t"), Default = "LeftControl", Mode = "Toggle" })
     Fluent.MinimizeKeybind = key
 end
 
--- ❌ ลบ section HOTKEYS ทั้งบล็อก (Fly = F / Noclip = N) ออกตามคำขอ
-
 SaveManager:BuildConfigSection(Tabs.Settings)
 
 do
     local sec = Tabs.Settings:AddSection(T("sec_script"))
-    sec:AddButton({
-        Title = T("unload_t"), Description = T("unload_d"),
-        Callback = function() Fluent:Destroy() end,
-    })
+    sec:AddButton({ Title = T("unload_t"), Description = T("unload_d"),
+        Callback = function() Fluent:Destroy() end })
 end
 
 pcall(function()
-    if Fluent.Options.TransparentToggle then
-        Fluent.Options.TransparentToggle:SetValue(false)
-    else
-        Fluent:ToggleTransparency(false)
-    end
+    if Fluent.Options.TransparentToggle then Fluent.Options.TransparentToggle:SetValue(false)
+    else Fluent:ToggleTransparency(false) end
 end)
-pcall(function()
-    Fluent:ToggleTransparency(false)
-    InterfaceManager.Settings.Transparency = false
-end)
+pcall(function() Fluent:ToggleTransparency(false) InterfaceManager.Settings.Transparency = false end)
 
 task.spawn(function()
     local black = C(3, 3, 3)
     while not Fluent.Unloaded do
         if Fluent.Theme == "Dark" then
             pcall(function()
-                local bg = Window.AcrylicPaint.Frame.Background
-                if bg.BackgroundColor3 ~= black then bg.BackgroundColor3 = black end
-                if bg.BackgroundTransparency ~= 0 then bg.BackgroundTransparency = 0 end
+                local bg = Window.AcrylicPaint and Window.AcrylicPaint.Frame.Background
+                if bg then
+                    if bg.BackgroundColor3 ~= black then bg.BackgroundColor3 = black end
+                    if bg.BackgroundTransparency ~= 0 then bg.BackgroundTransparency = 0 end
+                end
             end)
         end
         task.wait(0.5)
@@ -1510,10 +2007,8 @@ do
     if not pcall(function() Gui.Parent = (gethui and gethui()) or game:GetService("CoreGui") end) then
         Gui.Parent = LP:WaitForChild("PlayerGui")
     end
-    local Btn = New("TextButton", {
-        Name = "Icon", Size = UDim2.fromOffset(52, 52), Position = UDim2.new(0, 24, 0.5, -26),
-        AutoButtonColor = false, Text = "D", Font = Enum.Font.GothamBold, TextSize = 28, Visible = false,
-    }, Gui)
+    local Btn = New("TextButton", { Name = "Icon", Size = UDim2.fromOffset(52, 52), Position = UDim2.new(0, 24, 0.5, -26),
+        AutoButtonColor = false, Text = "D", Font = Enum.Font.GothamBold, TextSize = 28, Visible = false }, Gui)
     New("UICorner", { CornerRadius = UDim.new(1, 0) }, Btn)
     local Stroke = New("UIStroke", { Thickness = 2 }, Btn)
     local function IsPointer(i, move)
@@ -1528,9 +2023,7 @@ do
         if not (dragging and IsPointer(i, true)) then return end
         local d = i.Position - dragStart
         if d.Magnitude > 6 then moved = true end
-        if moved then
-            Btn.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + d.X, startPos.Y.Scale, startPos.Y.Offset + d.Y)
-        end
+        if moved then Btn.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + d.X, startPos.Y.Scale, startPos.Y.Offset + d.Y) end
     end))
     Track(UIS.InputEnded:Connect(function(i)
         if not (dragging and IsPointer(i)) then return end
