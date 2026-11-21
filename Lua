@@ -1,7 +1,8 @@
 -- ============================================================
--- DARK HUB — v3.5
+-- DARK HUB — v3.6
 -- Fixes: Freecam v2 (free look on PC / mobile / gamepad), freecam vs walk-speed fight,
 --        freecam on respawn, Freecam now fully locks your character (anchored)
+-- New:   Server Hop — finds the emptiest public server (1 player), retries on failure, optional Auto Hop
 -- Tier 1:  Waypoints (persistent), Freecam, Info HUD (draggable), Anti-Fling
 -- HUD v2:   Draggable, styled, colored per-status
 -- ============================================================
@@ -215,6 +216,19 @@ local STR = {
         n_rejoin = "Rejoining...",
         n_lang = "Language: English",
         n_lang_restart = "Language saved. Re-run the script to apply it fully",
+        sec_hop = "SERVER HOP",
+        hop_go_t = "Find Low-Pop Server", hop_go_d = "Search public servers and join the emptiest one (1 player if one exists)",
+        hop_max_t = "Target Max Players", hop_max_d = "Aim for a server with this many players or fewer (1 = alone)",
+        hop_strict_t = "Strict Mode", hop_strict_d = "Only join servers within the target; otherwise stay here",
+        hop_auto_t = "Auto Hop", hop_auto_d = "Keep hopping until the server is within the target. Put the script in your executor's autoexec folder so it re-runs in every server",
+        nt_hop = "Server Hop",
+        n_hop_search = "Searching servers...",
+        n_hop_join = "Joining a server with %d player(s)...",
+        n_hop_none = "No suitable emptier server found",
+        n_hop_http = "Could not read the server list (rate-limited or blocked). Try again shortly",
+        n_hop_priv = "Can't hop from a private / reserved server",
+        n_hop_already = "Already in a server within your target",
+        n_hop_fail = "All teleport attempts failed",
     },
     th = {
         tab_move = "การเคลื่อนที่", tab_players = "ผู้เล่น", tab_visual = "ภาพ", tab_util = "เครื่องมือ", tab_settings = "ตั้งค่า",
@@ -302,6 +316,19 @@ local STR = {
         n_rejoin = "กำลังเข้าเซิร์ฟใหม่...",
         n_lang = "ภาษา: ไทย",
         n_lang_restart = "บันทึกภาษาแล้ว รันสคริปต์ใหม่เพื่อให้มีผลทั้งหมด",
+        sec_hop = "หาเซิร์ฟคนน้อย (SERVER HOP)",
+        hop_go_t = "หาเซิร์ฟคนน้อย", hop_go_d = "ค้นหาเซิร์ฟสาธารณะแล้วเข้าเซิร์ฟที่คนน้อยที่สุด (1 คน ถ้ามี)",
+        hop_max_t = "จำนวนคนสูงสุดที่ต้องการ", hop_max_d = "เล็งเซิร์ฟที่มีคนเท่านี้หรือน้อยกว่า (1 = อยู่คนเดียว)",
+        hop_strict_t = "โหมดเข้มงวด", hop_strict_d = "เข้าเฉพาะเซิร์ฟที่คนไม่เกินที่ตั้งไว้ ถ้าไม่มีจะอยู่ที่เดิม",
+        hop_auto_t = "ย้ายเซิร์ฟอัตโนมัติ", hop_auto_d = "ย้ายต่อเรื่อยๆ จนเซิร์ฟมีคนไม่เกินที่ตั้งไว้ ใส่สคริปต์ในโฟลเดอร์ autoexec ของ executor เพื่อให้รันซ้ำทุกเซิร์ฟ",
+        nt_hop = "ย้ายเซิร์ฟ",
+        n_hop_search = "กำลังค้นหาเซิร์ฟ...",
+        n_hop_join = "กำลังเข้าเซิร์ฟที่มี %d คน...",
+        n_hop_none = "ไม่พบเซิร์ฟที่คนน้อยกว่าที่นี่",
+        n_hop_http = "อ่านรายชื่อเซิร์ฟไม่ได้ (โดนจำกัดความถี่หรือถูกบล็อก) ลองใหม่อีกครั้งในอีกสักครู่",
+        n_hop_priv = "ย้ายไม่ได้ เพราะอยู่ในเซิร์ฟส่วนตัว",
+        n_hop_already = "ตอนนี้อยู่ในเซิร์ฟที่คนไม่เกินที่ตั้งไว้แล้ว",
+        n_hop_fail = "วาร์ปเข้าเซิร์ฟไม่สำเร็จทุกครั้งที่ลอง",
     },
 }
 
@@ -1524,6 +1551,143 @@ loop = RunService.Heartbeat:Connect(function(dt)
 end)
 
 --==================================================
+-- SERVER HOP (low-population finder)
+--==================================================
+local HttpService = game:GetService("HttpService")
+local HOP_FILE = "DarkHub/hop.txt"
+local Hop = { max = 1, strict = false, auto = false, busy = false, failed = false, tried = {}, nextAuto = 0 }
+
+local function SaveHop()
+    pcall(function()
+        if not writefile then return end
+        if makefolder and isfolder and not isfolder("DarkHub") then makefolder("DarkHub") end
+        writefile(HOP_FILE, string.format("%d|%d|%d", Hop.auto and 1 or 0, math.floor(Hop.max), Hop.strict and 1 or 0))
+    end)
+end
+
+pcall(function()
+    if isfile and isfile(HOP_FILE) then
+        local a, m, st = readfile(HOP_FILE):match("(%d)|(%d+)|(%d)")
+        if a then
+            Hop.auto, Hop.max, Hop.strict = a == "1", math.clamp(tonumber(m) or 1, 1, 20), st == "1"
+        end
+    end
+end)
+
+-- returns decoded JSON, or nil + reason ("rate" / "http" / "json")
+local function HttpGetJSON(url)
+    local body
+    pcall(function() body = game:HttpGet(url) end)
+    if type(body) ~= "string" or body == "" then
+        local req = (syn and syn.request) or request or http_request or (fluxus and fluxus.request)
+        if req then
+            local ok, res = pcall(req, { Url = url, Method = "GET" })
+            if ok and res then
+                if res.StatusCode == 429 then return nil, "rate" end
+                body = res.Body
+            end
+        end
+    end
+    if type(body) ~= "string" or body == "" then return nil, "http" end
+    local ok, data = pcall(HttpService.JSONDecode, HttpService, body)
+    if not ok or type(data) ~= "table" then return nil, "json" end
+    if data.errors then return nil, "rate" end
+    return data
+end
+
+-- public servers sorted emptiest-first; skips this server, full ones and ones we already tried
+local function CollectServers(maxPages)
+    local list, cursor, lastErr = {}, nil, nil
+    for _ = 1, maxPages do
+        local url = string.format(
+            "https://games.roblox.com/v1/games/%d/servers/Public?sortOrder=Asc&excludeFullGames=true&limit=100%s",
+            game.PlaceId, cursor and ("&cursor=" .. cursor) or "")
+        local data, err
+        for attempt = 1, 3 do
+            data, err = HttpGetJSON(url)
+            if data then break end
+            task.wait(err == "rate" and 3 * attempt or 1.5)
+        end
+        if not data then lastErr = err break end
+        for _, sv in ipairs(data.data or {}) do
+            local playing, cap = sv.playing or 0, sv.maxPlayers or 0
+            if sv.id ~= game.JobId and not Hop.tried[sv.id] and playing >= 1 and playing < cap then
+                list[#list + 1] = sv
+            end
+        end
+        cursor = data.nextPageCursor
+        if not cursor or #list >= 15 then break end
+    end
+    table.sort(list, function(a, b)
+        if a.playing ~= b.playing then return a.playing < b.playing end
+        return (a.ping or 9e9) < (b.ping or 9e9)
+    end)
+    return list, lastErr
+end
+
+Track(TeleportService.TeleportInitFailed:Connect(function(plr)
+    if plr == LP then Hop.failed = true end
+end))
+
+local function HopToLow(force, silent)
+    if Hop.busy then return end
+    if game.PrivateServerId ~= "" then
+        if not silent then Note(T("nt_hop"), T("n_hop_priv")) end
+        return
+    end
+    if not force and #Players:GetPlayers() <= Hop.max then
+        if not silent then Note(T("nt_hop"), T("n_hop_already"), 3) end
+        return
+    end
+    Hop.busy = true
+    task.spawn(function()
+        if not silent then Note(T("nt_hop"), T("n_hop_search"), 3) end
+        local list, err = CollectServers(3)
+        local pool = list
+        if Hop.strict then
+            pool = {}
+            for _, sv in ipairs(list) do
+                if sv.playing <= Hop.max then pool[#pool + 1] = sv end
+            end
+        end
+        -- never move to a server that isn't emptier than this one (unless forced by the button)
+        if not force and pool[1] and pool[1].playing >= #Players:GetPlayers() then pool = {} end
+        if #pool == 0 then
+            Hop.nextAuto = os.clock() + 120
+            if not silent then Note(T("nt_hop"), T((err and #list == 0) and "n_hop_http" or "n_hop_none")) end
+            Hop.busy = false
+            return
+        end
+        for i = 1, math.min(#pool, 8) do
+            if Fluent.Unloaded then break end
+            local sv = pool[i]
+            Hop.tried[sv.id] = true
+            Hop.failed = false
+            Note(T("nt_hop"), T("n_hop_join", sv.playing), 4)
+            local ok = pcall(function() TeleportService:TeleportToPlaceInstance(game.PlaceId, sv.id, LP) end)
+            local t0 = os.clock()
+            repeat task.wait(0.25) until Hop.failed or not ok or Fluent.Unloaded or os.clock() - t0 > 20
+        end
+        Hop.busy = false
+        if not Fluent.Unloaded then
+            Hop.nextAuto = os.clock() + 30
+            Note(T("nt_hop"), T("n_hop_fail"))
+        end
+    end)
+end
+
+-- Auto Hop: after (re)load, keep moving until the server is within the target
+task.spawn(function()
+    task.wait(8)
+    while not Fluent.Unloaded do
+        if Hop.auto and not Hop.busy and os.clock() >= Hop.nextAuto and #Players:GetPlayers() > Hop.max then
+            pcall(HopToLow, false, true)
+        end
+        task.wait(10)
+    end
+end)
+
+--==================================================
 -- UI
 --==================================================
 local Window = Fluent:CreateWindow({
@@ -1905,6 +2069,18 @@ do
 end
 
 do
+    local sec = Tabs.Util:AddSection(T("sec_hop"))
+    sec:AddButton({ Title = T("hop_go_t"), Description = T("hop_go_d"),
+        Callback = function() HopToLow(true, false) end })
+    AddSlider(sec, "HopMax", T("hop_max_t"), T("hop_max_d"), Hop.max, 1, 20,
+        function(v) Hop.max = math.clamp(math.floor(v + 0.5), 1, 20) SaveHop() end)
+    AddToggle(sec, "HopStrict", T("hop_strict_t"), T("hop_strict_d"), Hop.strict,
+        function(on) Hop.strict = on SaveHop() end)
+    AddToggle(sec, "HopAuto", T("hop_auto_t"), T("hop_auto_d"), Hop.auto,
+        function(on) Hop.auto = on Hop.nextAuto = 0 SaveHop() end)
+end
+
+do
     local sec = Tabs.Util:AddSection(T("sec_sess"))
     AddToggle(sec, "AFKToggle", T("afk_t"), T("afk_d"), Settings.AntiAFK, function(on) Settings.AntiAFK = on end)
     sec:AddButton({ Title = T("respawn_t"), Description = T("respawn_d"),
@@ -1944,7 +2120,7 @@ SaveManager:SetIgnoreIndexes({
     "TPPlayer", "SpecToggle", "SpecPlayer", "FollowToggle", "FollowPlayer", "Language",
     "TPPlayerSearch", "SpecPlayerSearch", "FollowPlayerSearch",
     "BrightToggle", "FogToggle", "BoostToggle",
-    "FreecamToggle", "HUDToggle",
+    "FreecamToggle", "HUDToggle", "HopMax", "HopStrict", "HopAuto",
     "WP1Name", "WP2Name", "WP3Name", "WP4Name", "WP5Name",
 })
 
