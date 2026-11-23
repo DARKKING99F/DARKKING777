@@ -1,11 +1,3 @@
--- ============================================================
--- DARK HUB — v3.6
--- Fixes: Freecam v2 (free look on PC / mobile / gamepad), freecam vs walk-speed fight,
---        freecam on respawn, Freecam now fully locks your character (anchored)
--- New:   Server Hop — finds the emptiest public server (1 player), retries on failure, optional Auto Hop
--- Tier 1:  Waypoints (persistent), Freecam, Info HUD (draggable), Anti-Fling
--- HUD v2:   Draggable, styled, colored per-status
--- ============================================================
 local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
 local SaveManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/SaveManager.lua"))()
 local InterfaceManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/InterfaceManager.lua"))()
@@ -143,6 +135,9 @@ local STR = {
         sec_special = "SPECIAL",
         noclip_t = "Noclip", noclip_d = "Walk through walls and structures (the floor stays solid)",
         water_t = "Walk on Water", water_d = "Walk on top of water instead of swimming (terrain water)",
+        sec_climb = "WALL CLIMB",
+        climb_t = "Wall Climb", climb_d = "Climb any wall: walk into it to go up, Space/Jump = up, Left Shift = down, no input = hang in place, walk sideways to traverse, walk away to let go. Auto-mounts the ledge at the top",
+        climbspd_t = "Climb Speed", lvlclimb_d = "x1 = 4  ->  x50 = 200 studs/s",
         sec_spin = "SPIN",
         spin_t = "Spin", spin_d = "Make your character spin around and around",
         spinlv_t = "Spin Speed", lvlspin_d = "x1 = 1 rad/s  ->  x100 = 100 rad/s",
@@ -243,6 +238,9 @@ local STR = {
         sec_special = "ความสามารถพิเศษ (SPECIAL)",
         noclip_t = "ทะลุสิ่งปลูกสร้าง", noclip_d = "เดินทะลุกำแพงและสิ่งปลูกสร้างได้ แต่ยังยืนบนพื้นได้",
         water_t = "เดินบนผิวน้ำ", water_d = "เดินลอยบนผิวน้ำแทนการว่าย",
+        sec_climb = "ปีนกำแพง (WALL CLIMB)",
+        climb_t = "ปีนกำแพง", climb_d = "ปีนกำแพงได้ทุกแบบ: เดินชนกำแพงเพื่อปีนขึ้น, Space/กระโดด = ขึ้น, Shift ซ้าย = ลง, ไม่กดอะไร = เกาะนิ่ง, เดินข้างๆ = ไต่ไปด้านข้าง, เดินถอยออก = ปล่อยมือ และดึงตัวขึ้นขอบอัตโนมัติเมื่อถึงยอด",
+        climbspd_t = "ความเร็วปีน", lvlclimb_d = "x1 = 4  ->  x50 = 200 studs/s",
         sec_spin = "หมุน (SPIN)",
         spin_t = "หมุนตัว", spin_d = "ทำให้ตัวละครหมุนๆๆ ไปเรื่อยๆ",
         spinlv_t = "ความเร็วหมุน", lvlspin_d = "x1 = 1 rad/s  ->  x100 = 100 rad/s",
@@ -348,7 +346,158 @@ for lang, tbl in next, STR do
 end
 
 local LangHooks = {}
-local function Note(title, content, dur) Fluent:Notify({ Title = title, Content = content, Duration = dur or 4 }) end
+
+--==================================================
+-- NOTIFY (custom, bottom-right)
+-- Note(title, content, duration, kind)
+-- kind = "info" | "success" | "warn" | "error"  (default: info)
+--==================================================
+local Note
+do
+    local TweenService, TextService = game:GetService("TweenService"), game:GetService("TextService")
+
+    local NW, MAX_NOTES = 290, 5
+    local KINDS = {
+        info    = { color = C(90, 160, 255),  icon = "i" },
+        success = { color = C(90, 220, 150),  icon = "+" },
+        warn    = { color = C(255, 200, 80),  icon = "!" },
+        error   = { color = C(255, 100, 100), icon = "x" },
+    }
+
+    local NotifyGui = New("ScreenGui", {
+        Name = "DarkHubNotify", ResetOnSpawn = false, DisplayOrder = 1000, IgnoreGuiInset = true,
+        ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+    })
+    if not pcall(function() NotifyGui.Parent = (gethui and gethui()) or game:GetService("CoreGui") end) then
+        NotifyGui.Parent = LP:WaitForChild("PlayerGui")
+    end
+
+    local Holder = New("Frame", {
+        BackgroundTransparency = 1, AnchorPoint = Vector2.new(1, 1),
+        Position = UDim2.new(1, -16, 1, -16), Size = UDim2.new(0, NW, 1, -32),
+    }, NotifyGui)
+    New("UIListLayout", {
+        SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 8),
+        VerticalAlignment = Enum.VerticalAlignment.Bottom,
+        HorizontalAlignment = Enum.HorizontalAlignment.Right,
+    }, Holder)
+
+    local noteOrder, activeNotes = 0, {}
+    local EASE_OUT = TweenInfo.new(0.35, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+    local EASE_IN  = TweenInfo.new(0.25, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
+
+    Note = function(title, content, dur, kind)
+        if Fluent.Unloaded then return end
+        dur = tonumber(dur) or 4
+        local k = KINDS[kind] or KINDS.info
+        title, content = tostring(title or ""), tostring(content or "")
+
+        -- too many on screen -> dismiss the oldest
+        if #activeNotes >= MAX_NOTES then
+            local oldest = table.remove(activeNotes, 1)
+            if oldest then oldest() end
+        end
+
+        local textW = NW - 58
+        local size = TextService:GetTextSize(content, 12, Enum.Font.GothamMedium, Vector2.new(textW, 1000))
+        local H = math.max(58, 32 + size.Y + 14)
+
+        noteOrder += 1
+        local wrap = New("Frame", {
+            BackgroundTransparency = 1, Size = UDim2.fromOffset(NW, 0), LayoutOrder = noteOrder,
+        }, Holder)
+
+        local card = New("Frame", {
+            BackgroundColor3 = C(18, 18, 24), BackgroundTransparency = 0.08, BorderSizePixel = 0,
+            Size = UDim2.fromOffset(NW, H), Position = UDim2.fromOffset(NW + 40, 0), ClipsDescendants = true,
+        }, wrap)
+        New("UICorner", { CornerRadius = UDim.new(0, 10) }, card)
+        local stroke = New("UIStroke", {
+            Thickness = 1.2, Color = k.color, Transparency = 0.55, ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+        }, card)
+        New("UIGradient", {
+            Color = ColorSequence.new({
+                ColorSequenceKeypoint.new(0, C(38, 38, 52)),
+                ColorSequenceKeypoint.new(1, C(16, 16, 22)),
+            }), Rotation = 110,
+        }, card)
+
+        -- accent bar (left)
+        New("Frame", { BackgroundColor3 = k.color, BorderSizePixel = 0, Size = UDim2.new(0, 3, 1, 0) }, card)
+
+        -- icon badge
+        local badge = New("Frame", {
+            BackgroundColor3 = k.color, BackgroundTransparency = 0.8, BorderSizePixel = 0,
+            Position = UDim2.fromOffset(14, 11), Size = UDim2.fromOffset(24, 24),
+        }, card)
+        New("UICorner", { CornerRadius = UDim.new(1, 0) }, badge)
+        New("UIStroke", { Thickness = 1, Color = k.color, Transparency = 0.4 }, badge)
+        New("TextLabel", {
+            BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Font = Enum.Font.GothamBold,
+            TextSize = 14, TextColor3 = k.color, Text = k.icon,
+        }, badge)
+
+        -- title + content
+        New("TextLabel", {
+            BackgroundTransparency = 1, Position = UDim2.fromOffset(48, 10), Size = UDim2.new(1, -86, 0, 16),
+            Font = Enum.Font.GothamBold, TextSize = 13, TextColor3 = C(240, 240, 245),
+            TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd, Text = title,
+        }, card)
+        New("TextLabel", {
+            BackgroundTransparency = 1, Position = UDim2.fromOffset(48, 29), Size = UDim2.fromOffset(textW, size.Y),
+            Font = Enum.Font.GothamMedium, TextSize = 12, TextColor3 = C(165, 170, 185),
+            TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Top,
+            TextWrapped = true, Text = content,
+        }, card)
+
+        -- close "x" hint
+        New("TextLabel", {
+            BackgroundTransparency = 1, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -10, 0, 8),
+            Size = UDim2.fromOffset(14, 14), Font = Enum.Font.GothamBold, TextSize = 12,
+            TextColor3 = C(110, 115, 130), Text = "x",
+        }, card)
+
+        -- countdown bar
+        local barBack = New("Frame", {
+            BackgroundColor3 = C(255, 255, 255), BackgroundTransparency = 0.94, BorderSizePixel = 0,
+            AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 0, 1, 0), Size = UDim2.new(1, 0, 0, 3),
+        }, card)
+        local bar = New("Frame", { BackgroundColor3 = k.color, BorderSizePixel = 0, Size = UDim2.fromScale(1, 1) }, barBack)
+
+        -- click anywhere to dismiss
+        local hit = New("TextButton", { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Text = "", ZIndex = 10 }, card)
+
+        local closed = false
+        local function close()
+            if closed then return end
+            closed = true
+            for i, fn in ipairs(activeNotes) do if fn == close then table.remove(activeNotes, i) break end end
+            TweenService:Create(card, EASE_IN, { Position = UDim2.fromOffset(NW + 40, 0), BackgroundTransparency = 1 }):Play()
+            local shrink = TweenService:Create(wrap, TweenInfo.new(0.25, Enum.EasingStyle.Quint, Enum.EasingDirection.Out,
+                0, false, 0.12), { Size = UDim2.fromOffset(NW, 0) })
+            shrink.Completed:Connect(function() wrap:Destroy() end)
+            shrink:Play()
+        end
+        table.insert(activeNotes, close)
+        hit.MouseButton1Click:Connect(close)
+
+        -- hover = highlight border
+        hit.MouseEnter:Connect(function() TweenService:Create(stroke, TweenInfo.new(0.15), { Transparency = 0.1 }):Play() end)
+        hit.MouseLeave:Connect(function() TweenService:Create(stroke, TweenInfo.new(0.15), { Transparency = 0.55 }):Play() end)
+
+        -- slide in
+        TweenService:Create(wrap, EASE_OUT, { Size = UDim2.fromOffset(NW, H) }):Play()
+        TweenService:Create(card, EASE_OUT, { Position = UDim2.fromOffset(0, 0) }):Play()
+        TweenService:Create(bar, TweenInfo.new(dur, Enum.EasingStyle.Linear), { Size = UDim2.fromScale(0, 1) }):Play()
+        task.delay(dur, close)
+    end
+
+    -- cleanup when the script is unloaded
+    task.spawn(function()
+        while not Fluent.Unloaded do task.wait(0.5) end
+        if NotifyGui then NotifyGui:Destroy() end
+    end)
+end
 
 for i = #Fluent.Themes, 1, -1 do
     local n = Fluent.Themes[i]
@@ -360,7 +509,7 @@ end
 --==================================================
 local Settings = {
     FlySpeed = 3, WalkOn = false, WalkLevel = 1, JumpOn = false, JumpLevel = 1, InfJump = false,
-    NoclipOn = false, WaterOn = false,
+    NoclipOn = false, WaterOn = false, WallClimb = false, ClimbLevel = 6,
     SpinOn = false, SpinLevel = 10, SpinReverse = false,
     AntiVoid = true, ClickTP = false, Zoom = false, AntiAFK = true,
     BrightOn = false, BrightLevel = 10, NoFog = false, Boost = false,
@@ -756,7 +905,7 @@ local function SafetyTick()
     if danger then
         root.AssemblyLinearVelocity = Vector3.zero
         root.CFrame = lastSafe
-        Note(T("nt_safe"), T("n_void"), 3)
+        Note(T("nt_safe"), T("n_void"), 3, "warn")
     end
 end
 
@@ -1352,7 +1501,7 @@ local function SetBoost(on)
                     pcall(Reduce, inst)
                 end, Slicer(0.008))
             end
-            Note(T("boost_t"), T("n_boost_done"), 3)
+            Note(T("boost_t"), T("n_boost_done"), 3, "success")
         end)
     else
         pcall(function()
@@ -1459,7 +1608,7 @@ local function StartFollow(plr)
     table.insert(followConns, RunService.Heartbeat:Connect(function()
         local target = Tracking.Follow
         if target and target.Parent ~= Players then
-            StopFollow() SetOpt("FollowToggle", false) Note(T("fol_t"), T("n_fol_left"))
+            StopFollow() SetOpt("FollowToggle", false) Note(T("fol_t"), T("n_fol_left"), 4, "warn")
             return
         end
         StickStep()
@@ -1469,11 +1618,107 @@ end
 
 Track(Players.PlayerRemoving:Connect(function(p)
     if p == Tracking.Spec then
-        StopSpectate() SetOpt("SpecToggle", false) Note(T("spec_t"), T("n_spec_left"))
+        StopSpectate() SetOpt("SpecToggle", false) Note(T("spec_t"), T("n_spec_left"), 4, "warn")
     end
     if p == Tracking.Follow then
-        StopFollow() SetOpt("FollowToggle", false) Note(T("fol_t"), T("n_fol_left"))
+        StopFollow() SetOpt("FollowToggle", false) Note(T("fol_t"), T("n_fol_left"), 4, "warn")
     end
+end))
+
+--==================================================
+-- WALL CLIMB
+--==================================================
+local CLIMB_BASE, CLIMB_REACH = 4, 2.8
+local climbParams = RaycastParams.new()
+climbParams.FilterType = Enum.RaycastFilterType.Exclude
+local Climb = { active = false, auto = nil, normal = Vector3.zero, cool = 0 }
+
+local function StopClimb()
+    if not Climb.active then return end
+    Climb.active, Climb.normal = false, Vector3.zero
+    local hum = GetHumanoid()
+    if hum then
+        if Climb.auto ~= nil then hum.AutoRotate = Climb.auto end
+        if hum:GetState() == Enum.HumanoidStateType.Climbing then hum:ChangeState(Enum.HumanoidStateType.Freefall) end
+    end
+    Climb.auto = nil
+end
+
+local function ClimbTick()
+    if not Settings.WallClimb then return end
+    if Flying or FC.on or Tracking.Follow or Settings.SpinOn then StopClimb() return end
+    local char = LP.Character
+    local root = char and char:FindFirstChild("HumanoidRootPart")
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    if not (root and hum and hum.Health > 0) then StopClimb() return end
+    if os.clock() < Climb.cool then return end
+
+    local move = hum.MoveDirection
+    local flat = Vector3.new(move.X, 0, move.Z)
+    local look = root.CFrame.LookVector
+    climbParams.FilterDescendantsInstances = { char }
+
+    -- find the wall: where we are heading, the wall we already hold, or where we are looking
+    local dirs = {}
+    if flat.Magnitude > 0.1 then dirs[#dirs + 1] = flat.Unit end
+    if Climb.active and Climb.normal.Magnitude > 0 then dirs[#dirs + 1] = -Climb.normal end
+    local lf = Vector3.new(look.X, 0, look.Z)
+    if lf.Magnitude > 0.1 then dirs[#dirs + 1] = lf.Unit end
+
+    local hit
+    for _, d in ipairs(dirs) do
+        local r = workspace:Raycast(root.Position, d * CLIMB_REACH, climbParams)
+        if r and math.abs(r.Normal.Y) < 0.6 then hit = r break end
+    end
+    if not hit then StopClimb() return end
+
+    local n = Vector3.new(hit.Normal.X, 0, hit.Normal.Z)
+    if n.Magnitude < 0.05 then StopClimb() return end
+    n = n.Unit
+
+    local toward = flat:Dot(-n)        -- >0 pushing into the wall, <0 pulling away
+    local wantUp = UIS:IsKeyDown(Enum.KeyCode.Space) or hum.Jump
+    local wantDown = UIS:IsKeyDown(Enum.KeyCode.LeftShift)
+
+    if not Climb.active then
+        if not (toward > 0.25 or wantUp) then return end -- only latch on when you push into the wall
+        Climb.active = true
+        Climb.auto = hum.AutoRotate
+        hum.AutoRotate = false
+    elseif toward < -0.35 and not wantUp then
+        StopClimb() return -- walking away = let go
+    end
+    Climb.normal = n
+
+    local speed = CLIMB_BASE * Settings.ClimbLevel
+    local vy = 0
+    if wantDown then vy = -speed
+    elseif toward > 0.25 or wantUp then vy = speed end
+
+    -- ledge: wall ends above our head -> pull ourselves over the top
+    if vy > 0 then
+        local head = workspace:Raycast(root.Position + Vector3.new(0, 2.6, 0), -n * CLIMB_REACH, climbParams)
+        if not head then
+            root.AssemblyLinearVelocity = Vector3.new(-n.X * 14, math.clamp(speed * 0.6, 22, 60), -n.Z * 14)
+            Climb.cool = os.clock() + 0.45
+            StopClimb()
+            return
+        end
+    end
+
+    -- strafe along the wall
+    local tangent = flat - n * flat:Dot(n)
+    tangent = Vector3.new(tangent.X, 0, tangent.Z)
+    local side = tangent.Magnitude > 0.1 and tangent.Unit * math.min(speed, 40) * 0.6 or Vector3.zero
+
+    root.AssemblyLinearVelocity = Vector3.new(0, vy, 0) + side + (-n * 4)
+    root.AssemblyAngularVelocity = Vector3.zero
+    root.CFrame = CFrame.lookAt(root.Position, root.Position + Vector3.new(-n.X, 0, -n.Z))
+    if hum:GetState() ~= Enum.HumanoidStateType.Climbing then hum:ChangeState(Enum.HumanoidStateType.Climbing) end
+end
+
+Track(LP.CharacterAdded:Connect(function()
+    Climb.active, Climb.auto, Climb.normal, Climb.cool = false, nil, Vector3.zero, 0
 end))
 
 --==================================================
@@ -1495,6 +1740,7 @@ local function SyncToggles()
     SyncToggle("InfJumpToggle", "InfJump")
     SyncToggle("NoclipToggle", "NoclipOn", function(v) if v then ClipAcquire("noclip") else ClipRelease("noclip") end end)
     SyncToggle("WaterToggle", "WaterOn", function(v) if v then StartWater() else StopWater() end end)
+    SyncToggle("ClimbToggle", "WallClimb", function(v) if not v then StopClimb() end end)
     SyncToggle("SpinToggle", "SpinOn", function(v) if v then ApplySpin() else StopSpin() end end)
     SyncToggle("SpinReverse", "SpinReverse", ApplySpin)
     SyncToggle("VoidToggle", "AntiVoid")
@@ -1529,6 +1775,7 @@ loop = RunService.Heartbeat:Connect(function(dt)
         accSafe += dt
         if accSafe >= 0.25 then accSafe = 0 pcall(SafetyTick) end
         pcall(AntiFlingTick)
+        pcall(ClimbTick)
         if Settings.HUD then
             pcall(UpdateHUDFps, dt)
             accHUD += dt
@@ -1540,6 +1787,7 @@ loop = RunService.Heartbeat:Connect(function(dt)
     loop:Disconnect()
     ClearESP() StopFly() StopSpectate() StopFollow() StopFreecam()
     Settings.SpinOn, Settings.NoclipOn, Settings.WaterOn = false, false, false
+    Settings.WallClimb = false StopClimb()
     StopSpin() ClipRelease("noclip") StopWater() ApplyZoom(false)
     Settings.WalkOn, Settings.JumpOn, Settings.BrightOn, Settings.NoFog = false, false, false, false
     Settings.Freecam, Settings.HUD = false, false
@@ -1632,16 +1880,16 @@ end))
 local function HopToLow(force, silent)
     if Hop.busy then return end
     if game.PrivateServerId ~= "" then
-        if not silent then Note(T("nt_hop"), T("n_hop_priv")) end
+        if not silent then Note(T("nt_hop"), T("n_hop_priv"), 4, "error") end
         return
     end
     if not force and #Players:GetPlayers() <= Hop.max then
-        if not silent then Note(T("nt_hop"), T("n_hop_already"), 3) end
+        if not silent then Note(T("nt_hop"), T("n_hop_already"), 3, "info") end
         return
     end
     Hop.busy = true
     task.spawn(function()
-        if not silent then Note(T("nt_hop"), T("n_hop_search"), 3) end
+        if not silent then Note(T("nt_hop"), T("n_hop_search"), 3, "info") end
         local list, err = CollectServers(3)
         local pool = list
         if Hop.strict then
@@ -1654,7 +1902,10 @@ local function HopToLow(force, silent)
         if not force and pool[1] and pool[1].playing >= #Players:GetPlayers() then pool = {} end
         if #pool == 0 then
             Hop.nextAuto = os.clock() + 120
-            if not silent then Note(T("nt_hop"), T((err and #list == 0) and "n_hop_http" or "n_hop_none")) end
+            if not silent then
+                local isHttp = err and #list == 0
+                Note(T("nt_hop"), T(isHttp and "n_hop_http" or "n_hop_none"), 5, isHttp and "error" or "warn")
+            end
             Hop.busy = false
             return
         end
@@ -1663,7 +1914,7 @@ local function HopToLow(force, silent)
             local sv = pool[i]
             Hop.tried[sv.id] = true
             Hop.failed = false
-            Note(T("nt_hop"), T("n_hop_join", sv.playing), 4)
+            Note(T("nt_hop"), T("n_hop_join", sv.playing), 4, "success")
             local ok = pcall(function() TeleportService:TeleportToPlaceInstance(game.PlaceId, sv.id, LP) end)
             local t0 = os.clock()
             repeat task.wait(0.25) until Hop.failed or not ok or Fluent.Unloaded or os.clock() - t0 > 20
@@ -1671,7 +1922,7 @@ local function HopToLow(force, silent)
         Hop.busy = false
         if not Fluent.Unloaded then
             Hop.nextAuto = os.clock() + 30
-            Note(T("nt_hop"), T("n_hop_fail"))
+            Note(T("nt_hop"), T("n_hop_fail"), 4, "error")
         end
     end)
 end
@@ -1804,6 +2055,16 @@ do
 end
 
 do
+    local sec = Tabs.Move:AddSection(T("sec_climb"))
+    AddToggle(sec, "ClimbToggle", T("climb_t"), T("climb_d"), false, function(on)
+        Settings.WallClimb = on
+        if not on then StopClimb() end
+    end)
+    AddSlider(sec, "ClimbLevel", T("climbspd_t"), T("lvlclimb_d"), Settings.ClimbLevel, 1, 50,
+        function(v) Settings.ClimbLevel = math.clamp(math.floor(v + 0.5), 1, 50) end)
+end
+
+do
     local sec = Tabs.Move:AddSection(T("sec_spin"))
     AddToggle(sec, "SpinToggle", T("spin_t"), T("spin_d"), false, function(on)
         Settings.SpinOn = on
@@ -1880,10 +2141,10 @@ do
         Title = T("tp_go_t"), Description = T("tp_go_d"),
         Callback = function()
             local target = GetTP()
-            if not target or target.Parent ~= Players then RebuildTP() return Note(T("nt_tp"), T("n_tp_missing")) end
+            if not target or target.Parent ~= Players then RebuildTP() return Note(T("nt_tp"), T("n_tp_missing"), 4, "error") end
             local head = target.Character and target.Character:FindFirstChild("Head")
             local root = GetRoot()
-            if not (head and root) then return Note(T("nt_tp"), T("n_tp_notready")) end
+            if not (head and root) then return Note(T("nt_tp"), T("n_tp_notready"), 4, "warn") end
             root.AssemblyLinearVelocity = Vector3.zero
             root.CFrame = CFrame.new(head.Position + Vector3.new(0, 4, 0))
         end,
@@ -1892,7 +2153,7 @@ do
         Title = T("tp_rst_t"), Description = T("tp_rst_d"),
         Callback = function()
             RebuildTP()
-            Note(T("nt_tp"), T("n_tp_list", math.max(#Players:GetPlayers() - 1, 0)), 3)
+            Note(T("nt_tp"), T("n_tp_list", math.max(#Players:GetPlayers() - 1, 0)), 3, "info")
         end,
     })
 end
@@ -1905,14 +2166,14 @@ do
         Title = T("savepos_t"), Description = T("savepos_d"),
         Callback = function()
             local root = GetRoot()
-            if root then savedCF = root.CFrame Note(T("nt_tp"), T("n_pos_saved"), 3) end
+            if root then savedCF = root.CFrame Note(T("nt_tp"), T("n_pos_saved"), 3, "success") end
         end,
     })
     sec:AddButton({
         Title = T("gopos_t"), Description = T("gopos_d"),
         Callback = function()
             local root = GetRoot()
-            if not savedCF then return Note(T("nt_tp"), T("n_pos_none"), 3) end
+            if not savedCF then return Note(T("nt_tp"), T("n_pos_none"), 3, "warn") end
             if root then root.AssemblyLinearVelocity = Vector3.zero root.CFrame = savedCF end
         end,
     })
@@ -1938,7 +2199,7 @@ do
                 if root then
                     Waypoints[idx] = root.CFrame
                     SaveWaypointsToFile()
-                    Note(T("nt_wp"), T("n_wp_saved"), 3)
+                    Note(T("nt_wp"), T("n_wp_saved"), 3, "success")
                 end
             end,
         })
@@ -1946,12 +2207,12 @@ do
             Title = T("wp_gotmpl", idx), Description = T("wp_god"),
             Callback = function()
                 local wp = Waypoints[idx]
-                if not wp then return Note(T("nt_wp"), T("wp_empty"), 3) end
+                if not wp then return Note(T("nt_wp"), T("wp_empty"), 3, "warn") end
                 local root = GetRoot()
                 if root then
                     root.AssemblyLinearVelocity = Vector3.zero
                     root.CFrame = wp
-                    Note(T("nt_wp"), T("n_wp_go"), 3)
+                    Note(T("nt_wp"), T("n_wp_go"), 3, "success")
                 end
             end,
         })
@@ -1967,12 +2228,12 @@ do
         if on then
             local plr = GetSpec()
             if not plr then
-                Note(T("spec_t"), T("n_spec_none"))
+                Note(T("spec_t"), T("n_spec_none"), 4, "warn")
                 if specToggle then specToggle:SetValue(false) end
                 return
             end
             if FC.on then StopFreecam() SetOpt("FreecamToggle", false) end
-            StartSpectate(plr) Note(T("spec_t"), T("n_spec_on", plr.DisplayName), 3)
+            StartSpectate(plr) Note(T("spec_t"), T("n_spec_on", plr.DisplayName), 3, "info")
         else StopSpectate() end
     end)
 
@@ -1984,11 +2245,11 @@ do
         if on then
             local plr = GetFol()
             if not plr then
-                Note(T("fol_t"), T("n_fol_none"))
+                Note(T("fol_t"), T("n_fol_none"), 4, "warn")
                 if folToggle then folToggle:SetValue(false) end
                 return
             end
-            StartFollow(plr) Note(T("fol_t"), T("n_fol_on", plr.DisplayName), 3)
+            StartFollow(plr) Note(T("fol_t"), T("n_fol_on", plr.DisplayName), 3, "info")
         else StopFollow() end
     end)
     folSec:AddSlider("FollowDist", { Title = T("fol_dist_t"), Description = T("fol_dist_d"),
@@ -2001,7 +2262,7 @@ do
         Title = T("trk_stop_t"), Description = T("trk_stop_d"),
         Callback = function()
             SetOpt("SpecToggle", false) SetOpt("FollowToggle", false)
-            StopSpectate() StopFollow() Note(T("nt_trk"), T("n_trk_stopped"), 3)
+            StopSpectate() StopFollow() Note(T("nt_trk"), T("n_trk_stopped"), 3, "info")
         end,
     })
 end
@@ -2087,7 +2348,7 @@ do
         Callback = function() local hum = GetHumanoid() if hum then hum.Health = 0 end end })
     sec:AddButton({ Title = T("rejoin_t"), Description = T("rejoin_d"),
         Callback = function()
-            Note("DARK HUB", T("n_rejoin"), 3)
+            Note("DARK HUB", T("n_rejoin"), 3, "info")
             pcall(function()
                 if #Players:GetPlayers() <= 1 then TeleportService:Teleport(game.PlaceId, LP)
                 else TeleportService:TeleportToPlaceInstance(game.PlaceId, game.JobId, LP) end
@@ -2108,7 +2369,7 @@ do
         local old = Lang Lang = new SaveLang()
         for _, fn in ipairs(LangHooks) do pcall(fn) end
         local ok = SwapText(old, new)
-        Note("DARK HUB", T(ok and "n_lang" or "n_lang_restart"), 3)
+        Note("DARK HUB", T(ok and "n_lang" or "n_lang_restart"), 3, ok and "success" or "warn")
     end)
 end
 
@@ -2116,7 +2377,7 @@ SaveManager:SetLibrary(Fluent)
 InterfaceManager:SetLibrary(Fluent)
 SaveManager:IgnoreThemeSettings()
 SaveManager:SetIgnoreIndexes({
-    "FlyToggle", "NoclipToggle", "WaterToggle", "SpinToggle", "ClickTPToggle",
+    "FlyToggle", "NoclipToggle", "WaterToggle", "ClimbToggle", "SpinToggle", "ClickTPToggle",
     "TPPlayer", "SpecToggle", "SpecPlayer", "FollowToggle", "FollowPlayer", "Language",
     "TPPlayerSearch", "SpecPlayerSearch", "FollowPlayerSearch",
     "BrightToggle", "FogToggle", "BoostToggle",
@@ -2172,7 +2433,7 @@ task.spawn(function()
 end)
 
 Window:SelectTab(1)
-Note("DARK HUB", T("n_loaded"), 5)
+Note("DARK HUB", T("n_loaded"), 5, "success")
 SaveManager:LoadAutoloadConfig()
 
 --==================================================
