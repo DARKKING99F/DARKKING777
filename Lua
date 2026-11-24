@@ -46,10 +46,13 @@ end
 local WP_FILE = "DarkHub/waypoints.txt"
 local Waypoints, WaypointNames = {}, {}
 
+-- FIX: GetComponents() returns 12 values (x, y, z, then 9 rotation values).
+-- The old code captured only 10 and treated the first as a Vector3, which errored
+-- (swallowed by pcall) so waypoints were never actually saved to disk.
 local function SerializeCF(cf)
-    local p, r00, r01, r02, r10, r11, r12, r20, r21, r22 = cf:GetComponents()
+    local x, y, z, r00, r01, r02, r10, r11, r12, r20, r21, r22 = cf:GetComponents()
     return string.format("%.4f,%.4f,%.4f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f",
-        p.X, p.Y, p.Z, r00, r01, r02, r10, r11, r12, r20, r21, r22)
+        x, y, z, r00, r01, r02, r10, r11, r12, r20, r21, r22)
 end
 
 local function DeserializeCF(s)
@@ -136,7 +139,7 @@ local STR = {
         noclip_t = "Noclip", noclip_d = "Walk through walls and structures (the floor stays solid)",
         water_t = "Walk on Water", water_d = "Walk on top of water instead of swimming (terrain water)",
         sec_climb = "WALL CLIMB",
-        climb_t = "Wall Climb", climb_d = "Climb any wall: walk into it to go up, Space/Jump = up, Left Shift = down, no input = hang in place, walk sideways to traverse, walk away to let go. Auto-mounts the ledge at the top",
+        climb_t = "Wall Climb", climb_d = "Climb any wall: walk into it to go up, Space/Jump = up, Left Shift = down, no input = hang perfectly still, walk sideways to traverse, walk away to let go. Passes through roofs and overhangs, and auto-mounts the ledge at the top",
         climbspd_t = "Climb Speed", lvlclimb_d = "x1 = 4  ->  x50 = 200 studs/s",
         sec_spin = "SPIN",
         spin_t = "Spin", spin_d = "Make your character spin around and around",
@@ -239,7 +242,7 @@ local STR = {
         noclip_t = "ทะลุสิ่งปลูกสร้าง", noclip_d = "เดินทะลุกำแพงและสิ่งปลูกสร้างได้ แต่ยังยืนบนพื้นได้",
         water_t = "เดินบนผิวน้ำ", water_d = "เดินลอยบนผิวน้ำแทนการว่าย",
         sec_climb = "ปีนกำแพง (WALL CLIMB)",
-        climb_t = "ปีนกำแพง", climb_d = "ปีนกำแพงได้ทุกแบบ: เดินชนกำแพงเพื่อปีนขึ้น, Space/กระโดด = ขึ้น, Shift ซ้าย = ลง, ไม่กดอะไร = เกาะนิ่ง, เดินข้างๆ = ไต่ไปด้านข้าง, เดินถอยออก = ปล่อยมือ และดึงตัวขึ้นขอบอัตโนมัติเมื่อถึงยอด",
+        climb_t = "ปีนกำแพง", climb_d = "ปีนกำแพงได้ทุกแบบ: เดินชนกำแพงเพื่อปีนขึ้น, Space/กระโดด = ขึ้น, Shift ซ้าย = ลง, ไม่กดอะไร = เกาะนิ่งสนิท, เดินข้างๆ = ไต่ไปด้านข้าง, เดินถอยออก = ปล่อยมือ ทะลุหลังคาและส่วนที่ยื่นออกมาได้ และดึงตัวขึ้นขอบอัตโนมัติเมื่อถึงยอด",
         climbspd_t = "ความเร็วปีน", lvlclimb_d = "x1 = 4  ->  x50 = 200 studs/s",
         sec_spin = "หมุน (SPIN)",
         spin_t = "หมุนตัว", spin_d = "ทำให้ตัวละครหมุนๆๆ ไปเรื่อยๆ",
@@ -884,7 +887,9 @@ local voidParams = RaycastParams.new()
 voidParams.FilterType = Enum.RaycastFilterType.Exclude
 
 local function SafetyTick()
-    if not (Settings.AntiVoid or Settings.NoclipOn) then return end
+    -- FIX: also protect while any feature (wall climb, follow, noclip) has the character in noclip
+    local clipped = next(Clip.users) ~= nil
+    if not (Settings.AntiVoid or clipped) then return end
     local char = LP.Character
     local root = char and char:FindFirstChild("HumanoidRootPart")
     local hum = char and char:FindFirstChildOfClass("Humanoid")
@@ -898,7 +903,7 @@ local function SafetyTick()
     local destroy = workspace.FallenPartsDestroyHeight
     if Settings.AntiVoid and type(destroy) == "number" and destroy > -1e6 and y < destroy + 80 then
         danger = true
-    elseif Settings.NoclipOn and y < lastSafe.Position.Y - 60 and root.AssemblyLinearVelocity.Y < -40 then
+    elseif clipped and y < lastSafe.Position.Y - 60 and root.AssemblyLinearVelocity.Y < -40 then
         voidParams.FilterDescendantsInstances = { char }
         danger = workspace:Raycast(root.Position, Vector3.new(0, -4000, 0), voidParams) == nil
     end
@@ -1509,11 +1514,17 @@ local function SetBoost(on)
             OrigQuality = nil
         end)
         task.spawn(function()
+            -- FIX: iterate a snapshot. The old loop yielded (slice) while traversing the live
+            -- table with next(), which can throw "invalid key to 'next'" if the table changes.
             local slice = Slicer(0.006)
-            for inst, rec in next, Boost do
+            local snapshot = {}
+            for inst, rec in next, Boost do snapshot[#snapshot + 1] = { inst, rec } end
+            for _, pair in ipairs(snapshot) do
                 if gen ~= BoostGen then return end
+                local inst, rec = pair[1], pair[2]
                 for p, v in next, rec do pcall(Put, inst, p, v) end
-                Boost[inst] = nil slice()
+                Boost[inst] = nil
+                slice()
             end
         end)
     end
@@ -1626,58 +1637,158 @@ Track(Players.PlayerRemoving:Connect(function(p)
 end))
 
 --==================================================
--- WALL CLIMB
+-- WALL CLIMB (v3)
+--  * Hangs perfectly still when idle (position lock + gravity compensation)
+--  * Runs on Stepped (before physics) so gravity never gets a free frame
+--  * Noclips while climbing, so roofs / overhangs / awnings can't block you
+--  * Multi-height wall probing + short grace period so thin gaps don't drop you
+--  * Mounts the ledge at the top, then only restores collision once you are
+--    no longer overlapping any geometry (no getting pushed/stuck in the roof)
 --==================================================
-local CLIMB_BASE, CLIMB_REACH = 4, 2.8
+local CLIMB_BASE, CLIMB_REACH, CLIMB_STANDOFF = 4, 2.8, 1.35
+local CLIMB_HEIGHTS = { -2, 0, 2.4 } -- feet / chest / head probes (head = last)
+local VAULT_TIME, VAULT_UP, VAULT_FWD = 0.35, 20, 12
+
 local climbParams = RaycastParams.new()
 climbParams.FilterType = Enum.RaycastFilterType.Exclude
-local Climb = { active = false, auto = nil, normal = Vector3.zero, cool = 0 }
+climbParams.RespectCanCollide = true
 
-local function StopClimb()
-    if not Climb.active then return end
-    Climb.active, Climb.normal = false, Vector3.zero
-    local hum = GetHumanoid()
-    if hum then
-        if Climb.auto ~= nil then hum.AutoRotate = Climb.auto end
-        if hum:GetState() == Enum.HumanoidStateType.Climbing then hum:ChangeState(Enum.HumanoidStateType.Freefall) end
+local climbOverlap = OverlapParams.new()
+climbOverlap.FilterType = Enum.RaycastFilterType.Exclude
+climbOverlap.RespectCanCollide = true
+
+local Climb = {
+    active = false, auto = nil, normal = Vector3.zero, cool = 0,
+    hold = nil, lost = 0, lastVel = Vector3.zero, topT = nil,
+    vaultUntil = nil, vaultDir = Vector3.zero,
+    clip = false, releaseAt = nil,
+}
+
+local function ClimbRelease()
+    Climb.releaseAt = nil
+    if Climb.clip then
+        Climb.clip = false
+        ClipRelease("climb")
     end
-    Climb.auto = nil
 end
 
-local function ClimbTick()
-    if not Settings.WallClimb then return end
-    if Flying or FC.on or Tracking.Follow or Settings.SpinOn then StopClimb() return end
+local function StopClimb(immediate)
+    if Climb.active then
+        Climb.active = false
+        local hum = GetHumanoid()
+        if hum then
+            if Climb.auto ~= nil then hum.AutoRotate = Climb.auto end
+            if hum:GetState() == Enum.HumanoidStateType.Climbing then hum:ChangeState(Enum.HumanoidStateType.Freefall) end
+        end
+        Climb.auto = nil
+    end
+    Climb.normal, Climb.hold, Climb.lost, Climb.topT, Climb.vaultUntil = Vector3.zero, nil, 0, nil, nil
+    if Climb.clip then
+        if immediate then ClimbRelease()
+        elseif not Climb.releaseAt then Climb.releaseAt = os.clock() end
+    end
+end
+
+-- after letting go / vaulting: keep noclip until nothing overlaps us (max 1.5s)
+local function ClimbPendingRelease()
+    if not (Climb.clip and Climb.releaseAt) then return end
+    local char = LP.Character
+    local root = char and char:FindFirstChild("HumanoidRootPart")
+    if not root then ClimbRelease() return end
+    climbOverlap.FilterDescendantsInstances = { char }
+    local stuck = #workspace:GetPartBoundsInBox(root.CFrame, Vector3.new(2.6, 3.4, 2.6), climbOverlap) > 0
+    if not stuck or os.clock() - Climb.releaseAt > 1.5 then ClimbRelease() end
+end
+
+local function ClimbFilter(char)
+    local f = { char }
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= LP and p.Character then f[#f + 1] = p.Character end
+    end
+    return f
+end
+
+-- returns: nearest wall hit (vertical surfaces only), whether the head probe hit
+local function ProbeWall(root, dir)
+    local flat = Vector3.new(dir.X, 0, dir.Z)
+    if flat.Magnitude < 0.01 then return nil, false end
+    flat = flat.Unit
+    local best, headHit = nil, false
+    for i, h in ipairs(CLIMB_HEIGHTS) do
+        local r = workspace:Raycast(root.Position + Vector3.new(0, h, 0), flat * CLIMB_REACH, climbParams)
+        if r and math.abs(r.Normal.Y) < 0.6 then
+            if i == #CLIMB_HEIGHTS then headHit = true end
+            if not best or r.Distance < best.Distance then best = r end
+        end
+    end
+    return best, headHit
+end
+
+local function ClimbTick(dt)
+    ClimbPendingRelease()
+
+    if not Settings.WallClimb then StopClimb() return end
+    if Flying or FC.on or Tracking.Follow or Settings.SpinOn then StopClimb(true) return end
+
     local char = LP.Character
     local root = char and char:FindFirstChild("HumanoidRootPart")
     local hum = char and char:FindFirstChildOfClass("Humanoid")
-    if not (root and hum and hum.Health > 0) then StopClimb() return end
+    if not (root and hum and hum.Health > 0) then StopClimb(true) return end
+
+    -- ledge mount in progress: push up and over for a short moment
+    if Climb.vaultUntil then
+        if os.clock() < Climb.vaultUntil then
+            root.AssemblyLinearVelocity = Climb.vaultDir * VAULT_FWD + Vector3.new(0, VAULT_UP, 0)
+            root.AssemblyAngularVelocity = Vector3.zero
+            return
+        end
+        Climb.cool = os.clock() + 0.35
+        StopClimb()
+        return
+    end
     if os.clock() < Climb.cool then return end
 
     local move = hum.MoveDirection
     local flat = Vector3.new(move.X, 0, move.Z)
-    local look = root.CFrame.LookVector
-    climbParams.FilterDescendantsInstances = { char }
+    local lv = root.CFrame.LookVector
+    local lookFlat = Vector3.new(lv.X, 0, lv.Z)
+    climbParams.FilterDescendantsInstances = ClimbFilter(char)
 
-    -- find the wall: where we are heading, the wall we already hold, or where we are looking
+    -- find the wall: the one we already hold, where we are heading, or where we look
     local dirs = {}
-    if flat.Magnitude > 0.1 then dirs[#dirs + 1] = flat.Unit end
     if Climb.active and Climb.normal.Magnitude > 0 then dirs[#dirs + 1] = -Climb.normal end
-    local lf = Vector3.new(look.X, 0, look.Z)
-    if lf.Magnitude > 0.1 then dirs[#dirs + 1] = lf.Unit end
+    if flat.Magnitude > 0.1 then dirs[#dirs + 1] = flat.Unit end
+    if not Climb.active and lookFlat.Magnitude > 0.1 then dirs[#dirs + 1] = lookFlat.Unit end
 
-    local hit
+    local hit, headHit
     for _, d in ipairs(dirs) do
-        local r = workspace:Raycast(root.Position, d * CLIMB_REACH, climbParams)
-        if r and math.abs(r.Normal.Y) < 0.6 then hit = r break end
+        hit, headHit = ProbeWall(root, d)
+        if hit then break end
     end
-    if not hit then StopClimb() return end
+
+    if not hit then
+        -- brief grace so thin gaps / roof slabs don't knock us off the wall
+        if Climb.active and Climb.lost < 0.3 then
+            Climb.lost += dt
+            if Climb.hold then
+                root.CFrame = CFrame.new(Climb.hold) * root.CFrame.Rotation
+                root.AssemblyLinearVelocity = Vector3.zero
+            else
+                root.AssemblyLinearVelocity = Climb.lastVel
+            end
+            return
+        end
+        StopClimb()
+        return
+    end
+    Climb.lost = 0
 
     local n = Vector3.new(hit.Normal.X, 0, hit.Normal.Z)
     if n.Magnitude < 0.05 then StopClimb() return end
     n = n.Unit
 
-    local toward = flat:Dot(-n)        -- >0 pushing into the wall, <0 pulling away
-    local wantUp = UIS:IsKeyDown(Enum.KeyCode.Space) or hum.Jump
+    local toward = flat:Dot(-n) -- >0 pushing into the wall, <0 pulling away
+    local wantUp = UIS:IsKeyDown(Enum.KeyCode.Space) or ((UIS.TouchEnabled and hum.Jump) or false)
     local wantDown = UIS:IsKeyDown(Enum.KeyCode.LeftShift)
 
     if not Climb.active then
@@ -1685,8 +1796,15 @@ local function ClimbTick()
         Climb.active = true
         Climb.auto = hum.AutoRotate
         hum.AutoRotate = false
+        Climb.hold, Climb.topT = nil, nil
+        Climb.releaseAt = nil
+        if not Climb.clip then
+            Climb.clip = true
+            ClipAcquire("climb") -- noclip: roofs and overhangs can no longer block the climb
+        end
     elseif toward < -0.35 and not wantUp then
-        StopClimb() return -- walking away = let go
+        StopClimb() -- walking away = let go
+        return
     end
     Climb.normal = n
 
@@ -1695,30 +1813,67 @@ local function ClimbTick()
     if wantDown then vy = -speed
     elseif toward > 0.25 or wantUp then vy = speed end
 
-    -- ledge: wall ends above our head -> pull ourselves over the top
-    if vy > 0 then
-        local head = workspace:Raycast(root.Position + Vector3.new(0, 2.6, 0), -n * CLIMB_REACH, climbParams)
-        if not head then
-            root.AssemblyLinearVelocity = Vector3.new(-n.X * 14, math.clamp(speed * 0.6, 22, 60), -n.Z * 14)
-            Climb.cool = os.clock() + 0.45
+    -- climbing down: stop when the ground is right below (noclip must not drop us through it)
+    if vy < 0 then
+        local off = (hum.RigType == Enum.HumanoidRigType.R6) and 3 or (hum.HipHeight + root.Size.Y / 2)
+        local ground = workspace:Raycast(root.Position, Vector3.new(0, -(off + 0.8), 0), climbParams)
+        if ground then
+            Climb.cool = os.clock() + 0.3
             StopClimb()
             return
         end
     end
 
+    -- ledge: the head probe no longer touches the wall -> mount the top
+    if vy > 0 and not headHit then
+        Climb.topT = Climb.topT or os.clock()
+        if os.clock() - Climb.topT > 0.1 then
+            Climb.vaultUntil = os.clock() + VAULT_TIME
+            Climb.vaultDir = -n
+            Climb.topT = nil
+            return
+        end
+    else
+        Climb.topT = nil
+    end
+
     -- strafe along the wall
     local tangent = flat - n * flat:Dot(n)
     tangent = Vector3.new(tangent.X, 0, tangent.Z)
-    local side = tangent.Magnitude > 0.1 and tangent.Unit * math.min(speed, 40) * 0.6 or Vector3.zero
+    local side = Vector3.zero
+    if tangent.Magnitude > 0.1 then side = tangent.Unit * math.min(speed, 40) * 0.6 end
 
-    root.AssemblyLinearVelocity = Vector3.new(0, vy, 0) + side + (-n * 4)
+    local face = Vector3.new(-n.X, 0, -n.Z)
+    local perp = (hit.Position - root.Position):Dot(-n) -- distance to the wall plane
+
+    if vy == 0 and side.Magnitude == 0 then
+        -- HANG: lock the position outright so gravity can never make us slide
+        if not Climb.hold then
+            Climb.hold = root.Position + (-n) * math.clamp(perp - CLIMB_STANDOFF, -1, 1)
+        end
+        root.CFrame = CFrame.lookAt(Climb.hold, Climb.hold + face)
+        root.AssemblyLinearVelocity = Vector3.zero
+        Climb.lastVel = Vector3.zero
+    else
+        Climb.hold = nil
+        local stick = math.clamp((perp - CLIMB_STANDOFF) * 10, -8, 8) -- keep a constant gap to the wall
+        -- we set velocity before the physics step, so add back what gravity takes this frame
+        local vel = Vector3.new(0, vy + workspace.Gravity * dt, 0) + side + (-n * stick)
+        root.AssemblyLinearVelocity = vel
+        Climb.lastVel = vel
+        root.CFrame = CFrame.lookAt(root.Position, root.Position + face)
+    end
     root.AssemblyAngularVelocity = Vector3.zero
-    root.CFrame = CFrame.lookAt(root.Position, root.Position + Vector3.new(-n.X, 0, -n.Z))
     if hum:GetState() ~= Enum.HumanoidStateType.Climbing then hum:ChangeState(Enum.HumanoidStateType.Climbing) end
 end
 
+-- Stepped = runs before physics each frame (Heartbeat runs after, which let gravity win)
+Track(RunService.Stepped:Connect(function(_, dt) pcall(ClimbTick, dt) end))
+
 Track(LP.CharacterAdded:Connect(function()
     Climb.active, Climb.auto, Climb.normal, Climb.cool = false, nil, Vector3.zero, 0
+    Climb.hold, Climb.lost, Climb.topT, Climb.vaultUntil = nil, 0, nil, nil
+    ClimbRelease()
 end))
 
 --==================================================
@@ -1775,7 +1930,6 @@ loop = RunService.Heartbeat:Connect(function(dt)
         accSafe += dt
         if accSafe >= 0.25 then accSafe = 0 pcall(SafetyTick) end
         pcall(AntiFlingTick)
-        pcall(ClimbTick)
         if Settings.HUD then
             pcall(UpdateHUDFps, dt)
             accHUD += dt
@@ -1787,7 +1941,7 @@ loop = RunService.Heartbeat:Connect(function(dt)
     loop:Disconnect()
     ClearESP() StopFly() StopSpectate() StopFollow() StopFreecam()
     Settings.SpinOn, Settings.NoclipOn, Settings.WaterOn = false, false, false
-    Settings.WallClimb = false StopClimb()
+    Settings.WallClimb = false StopClimb(true) ClimbRelease()
     StopSpin() ClipRelease("noclip") StopWater() ApplyZoom(false)
     Settings.WalkOn, Settings.JumpOn, Settings.BrightOn, Settings.NoFog = false, false, false, false
     Settings.Freecam, Settings.HUD = false, false
